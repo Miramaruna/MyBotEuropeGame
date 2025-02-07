@@ -39,50 +39,31 @@ async def investigate(message: Message, state: FSMContext):
     
 @r.message(Investigate.num)
 async def process_investigate(message: Message, state: FSMContext):
+    global numOfInvest, Invest
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
+    is_user = await chek_is_user(message.from_user.id)
+    money = await get_money(message.from_user.id)
+    country = await get_country(message.from_user.id)
+    if is_user == False:
+        await message.reply("Вы не зарегистрированы.")
+        return
     try:
-        cursor.execute("SELECT money FROM users WHERE user_id = ?", (message.from_user.id,))
-        cursor.execute("SELECT country FROM users WHERE user_id = ?", (message.from_user.id,))
-        country = cursor.fetchone()[0]
-        money = cursor.fetchone()[0]
-    except BaseException as e:
-        await message.reply("Error: " + str(e))
-        await state.clear()
-    if country is None:
-        await message.reply("У вас нет страны.")
-        await state.clear()
-        return
-    if money < int(message.text):
-        await message.reply("У вас недостаточно денег.")
-        await state.clear()
-        return
-    asyncio.create_task(country, money)
-    await state.clear()
-    conn.close()
-    await message.reply("Вы успешно инвестировали деньги в экономику своей страны.")
-
-async def create_task(country, money):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
-    Invest = True
-    numOfInvest = 0
-    while Invest:
-        numOfInvest += 1
-        if numOfInvest == 5:
-            Invest = False
-            break
-        await asyncio.sleep(5)
+        if money < int(message.text):
+            await message.reply("У вас недостаточно средств для инвестирования.")
+            return
         try:
-            cursor.execute("UPDATE countries SET economy = economy + ? WHERE name = ?", (money / 3, country))
-            await message.reply(F"Вы инвестировали {money / 3} монет в экономику своей страны.")
+            cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (int(message.text), message.from_user.id))
+            asyncio.create_task(invest_task(country, int(message.text), message.from_user.id))
         except BaseException as e:
             await message.reply("Error: " + str(e))
             Invest = False
-            break
-    await state.clear()
-    conn.commit()
-    
+            return
+    finally:
+        await state.clear()
+        conn.commit()
+        conn.close()
+
 # endregion
     
 @r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
@@ -122,4 +103,20 @@ async def chek_is_user(user_id):
         return False
     conn.close()
     
+async def get_money(user_id):
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT money FROM users WHERE user_id = ?", (user_id,))
+    money = cursor.fetchone()
+    conn.close()
+    return money[0]
+    
+async def get_country(user_id):
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT country FROM users WHERE user_id = ?", (user_id,))
+    country = cursor.fetchone()
+    conn.close()
+    return country[0]
+
 # endregion

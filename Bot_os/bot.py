@@ -94,13 +94,13 @@ async def show_info(message: types.Message):
     user_id = message.from_user.id
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT name, country, role FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT name, country, role, money FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     conn.close()
 
     if user:
-        name, country, role = user
-        await message.answer(f"🆔 Имя: {name}\n🌍 Страна: {country}\n🏅 Роль: {role}")
+        name, country, role, money = user
+        await message.answer(f"🆔 Имя: {name}\n🌍 Страна: {country}\n🏅 Роль: {role}\n💵 Деньги : {money}")
     else:
         await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
 
