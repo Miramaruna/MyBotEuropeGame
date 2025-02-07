@@ -38,3 +38,4 @@ pip-wheel-metadata/
 __pypackages__/
 
 *config.py
+config.py

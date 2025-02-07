@@ -19,3 +19,14 @@ button_countries_methods = [
 ]
 
 keyboard_countries_methods = InlineKeyboardMarkup(inline_keyboard=button_countries_methods)
+
+button_admin = [
+    [KeyboardButton(text="/ban")],
+    [KeyboardButton(text="/get_users")],
+    [KeyboardButton(text="/mailing")],
+    [KeyboardButton(text="/givement")],
+    [KeyboardButton(text="/admin")],
+    [KeyboardButton(text="/register_admin")]
+]
+
+keyboard_admin = ReplyKeyboardMarkup(keyboard=button_admin, resize_keyboard=True, row_width=2)

@@ -160,6 +160,10 @@ async def help(message: Message):
                         "/country_info - 🌍 Информация о вашей стране\n"
                         "/help - ❓ Помощь", reply_markup=keyboard_start)
     
+@r.message(F.photo)
+async def get_photo(message: Message):
+    await message.answer(f"ID фота: {message.photo[-1].file_id}")
+    
 # region Need methods
 
 async def add_admin(user_id):
@@ -248,6 +252,22 @@ async def ban_user(user_id, admin_id):
     conn.close()
     return True
 
+async def broadcast_message(message_text):
+    users = get_all_users()
+    for user_id in users:
+        try:
+            await bot.send_message(chat_id=user_id, text=message_text)
+        except TelegramBadRequest as e:
+            print(f"Ошибка отправки пользователю {user_id}: {e}")
+            
+async def get_all_users():
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, name, country, role, money FROM users")
+    users = cursor.fetchall()
+    conn.close()
+    return users
+
 # endregion
 
 # region admin
@@ -279,7 +299,7 @@ async def admin_command(message: Message):
         await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
         logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
         return
-    await message.answer("ban 'ID' - бан игрока по ID\ngivement 'sum' 'ID' - Выдача денег по ID\ncreate_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\ndelete_country 'name' - удаление страны по названию\nget_users - получение всех пользователей с их ID и вообщем все информации\nget_country - получени всех стран с их параметрами")
+    await message.answer("ban 'ID' - бан игрока по ID\ngivement 'sum' 'ID' - Выдача денег по ID\ncreate_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\ndelete_country 'name' - удаление страны по названию\nget_users - получение всех пользователей с их ID и вообщем все информации\nget_country - получени всех стран с их параметрами", reply_markup=keyboard_admin)
     
 @r.message(Command("ban"))
 async def ban_user(message: Message):
@@ -290,15 +310,81 @@ async def ban_user(message: Message):
         return
     args = message.text.split()
     if len(args)!= 2:
-        await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'")
+        await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'", reply_markup=keyboard_admin)
         return
     user_id = int(args[1])
     if user_id == admin:
         ban_user(message.from_user.id, admin)
         logging.info(F"Пользователь с ID: {message.from_user.id} пытался забанить разработчика!")
     await ban_user(user_id, message.from_user.id)
-    await message.reply(F"❗️Пользователь с ID: {user_id} был забанен")
+    await message.reply(F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
     
-# @r.message(Command("givement"))
+@r.message(Command('givement'))
+async def givement_pol(message: Message):
+
+    try:
+        args = message.text.split()
+        if len(args) < 3:
+            raise ValueError("Неверный формат команды. Используйте: /givement <id получателя> <сумма> Пример /givement id пользователя 100", reply_markup=keyboard_admin)
+
+        receiver_id = int(args[1])
+        amount = float(args[2])
+
+        cursor.execute("SELECT money FROM users WHERE user_id = ?", (message.from_user.id,))
+        sender_cash = cursor.fetchone()
+
+        if sender_cash is None:
+            raise ValueError("Пользователь-отправитель не найден", reply_markup=keyboard_admin)
+        
+        if sender_cash[0] < amount:
+            raise ValueError("Недостаточно средств для перевода", reply_markup=keyboard_admin)
+
+        cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (amount, receiver_id))
+
+        await bot.send_message(receiver_id, f'Вам начислено {amount}')
+        
+        logging.info(F"Перевод был исполнен админом с ID: {message.from_user.id} пользователь с ID: {receiver_id} на число {amount} денег", reply_markup=keyboard_admin)
+
+        connection.commit()
+        await message.reply("Перевод выполнен успешно", reply_markup=keyboard_admin)
+
+    except Exception as e:
+        connection.rollback()
+        await message.reply(f"Ошибка: {e}")
+        
+class BroadcastForm(StatesGroup):
+    waiting_for_message = State()
+            
+@r.message(Command("mailing"))
+async def start_broadcast(message: Message, state: FSMContext):
+    if message.from_user.id == admin or admin2:
+        await message.answer("Введите сообщение для рассылки:", reply_markup=keyboard_admin)
+        await state.set_state(BroadcastForm.waiting_for_message)
+    else:
+        await message.answer("У вас нет прав для выполнения этой команды.")
+    
+@r.message(BroadcastForm.waiting_for_message, F.content_type == ContentType.TEXT)
+async def get_broadcast_message(message: Message, state: FSMContext):
+    broadcast_text = message.text
+
+    await broadcast_message(broadcast_text)
+    
+    await message.answer("Рассылка завершена.", reply_markup=keyboard_admin)
+    await state.clear()
+    
+@r.message(Command("get_users"))
+async def get_users(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался получить список пользователей")
+        return
+    useri = await get_all_users()
+    if useri:
+        response = "список всех пользователей:\n"
+        for user_id, name, money, country, role in useri:
+            response += f"user_id - {user_id}, name - {name}, country - {money}, role - {country}, money- {role}\n"
+    await message.reply(f"{response}")
+
     
 # endregion
