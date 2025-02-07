@@ -7,6 +7,7 @@ button_start = [
     [KeyboardButton(text="/countries")],
     [KeyboardButton(text="/start")],
     [KeyboardButton(text="/help")],
+    [KeyboardButton(text="/info_bot")]
     [KeyboardButton(text="Копать")]
 ]
 
