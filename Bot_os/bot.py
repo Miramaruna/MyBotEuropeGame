@@ -1,3 +1,5 @@
+# region imports
+
 import sqlite3
 import asyncio
 import logging
@@ -16,13 +18,15 @@ from app.DB import *
 if not TOKEN:
     raise ValueError("🚨 TOKEN environment variable is not set")
 
+# endregion
+
 # 🤖 Инициализация бота и диспетчера
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 admin = 5626265763
 admin2 = 45
 
-# 🌟 region start
+#  region start
 
 class Registration(StatesGroup):
     name = State()
@@ -34,17 +38,20 @@ async def send_welcome(message: types.Message):
 
 @dp.message(Command("register"))
 async def register(message: types.Message, state: FSMContext):
-    await message.answer("✍ Введите ваше имя:")
+    await message.answer("✍ Введите ваше имя:\n🚫Отмена - отмена")
     await state.set_state(Registration.name)
 
-# 📝 Обработка имени
+#  Обработка имени
 @dp.message(Registration.name)
 async def process_name(message: types.Message, state: FSMContext):
+    if message.text == "Отмена" or message.text == "отмена":
+        await state.clear()
+        return
     await state.update_data(name=message.text)
     await message.answer("🌍 Отлично! Теперь выберите страну из списка: /countries")
     await state.set_state(Registration.country)
 
-# 📜 Команда /countries
+#  Команда /countries
 @dp.message(Command("countries"))
 async def choose_country(message: types.Message):
     conn = sqlite3.connect("game.db")
@@ -59,9 +66,12 @@ async def choose_country(message: types.Message):
     else:
         await message.answer("⚠ Список стран пуст. Обратитесь к администратору.")
 
-# 🏛 Обработка выбора страны
+#  Обработка выбора страны
 @dp.message(Registration.country)
 async def process_country(message: types.Message, state: FSMContext):
+    if message.text == "Отмена" or message.text == "отмена":
+        await state.clear()
+        return
     country = message.text
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
@@ -81,11 +91,11 @@ async def process_country(message: types.Message, state: FSMContext):
     else:
         await message.answer("❌ Такой страны нет в списке. Попробуйте ещё раз.")
         
-# 🌟 endregion
+#  endregion
 
-# ℹ region info
+#  region info
 
-# ℹ Команда /info
+#  Команда /info
 @dp.message(Command("info"))
 async def show_info(message: types.Message):
     is_user = await chek_is_user(message.from_user.id)
@@ -105,7 +115,7 @@ async def show_info(message: types.Message):
     else:
         await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
 
-# 🌍 Команда /country_info
+#  Команда /country_info
 @dp.message(Command("country_info"))
 async def show_country_info(message: types.Message):
     user_id = message.from_user.id  # Инициализация user_id
@@ -121,7 +131,7 @@ async def show_country_info(message: types.Message):
     else:
         await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
         
-# ℹ endregion
+#  endregion
 
 async def main():
     logging.basicConfig(level=logging.INFO)

@@ -1,3 +1,5 @@
+# region imports
+
 import sqlite3, random, time, asyncio
 
 from aiogram import F, Router
@@ -17,29 +19,31 @@ from app.keyboards import *
 from app.DB import *
 from bot import *
 
+# endregion
+
 r = Router()
 fm_t = False
 chat_id = None
 admin = 5626265763 
 kol_kop = None
 
-# 🌍 region InCountryMethods
+# region InCountryMethods
 
 class Investigate(StatesGroup):
     num = State()
 
-@r.message(Command("invest"))
-async def investigate(message: Message, state: FSMContext):
-    is_user = await chek_is_user(message.from_user.id)
-    if is_user == False:
-        await message.reply("❌ Вы не зарегистрированы.")
-        return
-    await message.reply("💰 Введите сумму инвестиции на вашу страну:")
+@r.callback_query(F.data == "invest")
+async def investigate(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.answer("💰 Введите сумму инвестиции на вашу страну:\n🚫Отмена - отмена")
     await state.set_state(Investigate.num)
     
 @r.message(Investigate.num)
 async def process_investigate(message: Message, state: FSMContext):
     global numOfInvest, Invest
+    if message.text == "Отмена":
+        Invest = False
+        await state.clear()
+        return
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
     is_user = await chek_is_user(message.from_user.id)
@@ -59,7 +63,10 @@ async def process_investigate(message: Message, state: FSMContext):
             await message.reply("🚨 Ошибка: " + str(e))
             Invest = False
             return
-    finally:
+    except BaseException as e:
+        await message.reply("��� Ошибка: " + str(e))
+        Invest = False
+        return
         await state.clear()
         conn.commit()
         conn.close()
@@ -81,13 +88,13 @@ async def invest_task(country, money, chat_id):
             await bot.send_message(chat_id=chat_id, text="🚨 Ошибка: " + str(e))
             Invest = False
             break
-        await asyncio.sleep(5)
+        await asyncio.sleep(20)
     conn.commit()
     conn.close()
 
-# 🌍 endregion
+# endregion
     
-# 💰 region earn money
+# region earn money
 
 @r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
 async def kop(message: Message):
@@ -112,13 +119,17 @@ async def kop(message: Message):
     
 @r.callback_query(F.data == "start_production")
 async def money_from_country(callback_query: types.CallbackQuery):
+    global fm_t
     user_id = callback_query.from_user.id
     chat_id = callback_query.message.chat.id
     is_user = await chek_is_user(user_id)
     if is_user == False:
         await callback_query.answer("❌ Вы не зарегистрированы.")
+        fm_t = False
         return
-    while True:
+    await callback_query.answer("🏭 Производство начато.\n⏳Каждую минуту вы будете получать свой доход.")
+    fm_t = True
+    while fm_t:
         country = await get_country(user_id)
         params = await get_country_params(country)
         economy = params[0] // 5
@@ -128,7 +139,13 @@ async def money_from_country(callback_query: types.CallbackQuery):
         await transfer_money(income, user_id, True)
         await bot.send_message(chat_id=chat_id, text=f"💰 Было получено {income} монет из страны {country}.")
         await asyncio.sleep(5)
-# 💰 endregion
+        
+@r.callback_query(F.data == "stop_production")
+async def stop_production(callback_query: types.CallbackQuery):
+    global fm_t
+    await callback_query.answer("🛑 Производство остановлено.")
+    fm_t = False
+# endregion
     
 @r.message(Command("help"))
 async def help(message: Message):
@@ -142,7 +159,7 @@ async def help(message: Message):
                         "/country_info - 🌍 Информация о вашей стране\n"
                         "/help - ❓ Помощь", reply_markup=keyboard_start)
     
-# 🛠 region Need methods
+# region Need methods
 
 async def transfer_money(money, user_id, is_positive):
     conn = sqlite3.connect("game.db")
@@ -163,7 +180,8 @@ async def chek_is_user(user_id):
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-    if cursor.fetchone():
+    user = cursor.fetchone()
+    if user:
         return True
     else:
         return False
@@ -193,4 +211,4 @@ async def get_country_params(country):
     conn.close()
     return country_params
 
-# 🛠 endregion
+# endregion
