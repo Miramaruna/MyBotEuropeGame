@@ -383,7 +383,7 @@ async def get_users(message: Message):
     if useri:
         response = "список всех пользователей:\n"
         for user_id, name, money, country, role in useri:
-            response += f"user_id - {user_id}, name - {name}, country - {money}, role - {country}, money- {role}\n"
+            response += f"user_id - {user_id}, name - {name}, country - {money}, roleget - {country}, money- {role}\n"
     await message.reply(f"{response}")
 
     
