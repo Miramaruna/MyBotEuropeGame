@@ -22,6 +22,8 @@ dp = Dispatcher(storage=MemoryStorage())
 admin = 5626265763
 admin2 = 45
 
+# region start
+
 # Состояния для регистрации
 class Registration(StatesGroup):
     name = State()
@@ -30,7 +32,7 @@ class Registration(StatesGroup):
 # Команда /start
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    await message.answer("👋 Привет! Добро пожаловать в игру. Используй /register, чтобы зарегистрироваться.")
+    await message.answer("👋 Привет! Добро пожаловать в игру. Используй /register, чтобы зарегистрироваться.\n/help - для помощи")
 
 # Команда /register
 @dp.message(Command("register"))
@@ -81,6 +83,10 @@ async def process_country(message: types.Message, state: FSMContext):
         await state.clear()
     else:
         await message.answer("❌ Такой страны нет в списке. Попробуйте ещё раз.")
+        
+# endregion
+
+#region info
 
 # Команда /info
 @dp.message(Command("info"))
@@ -120,6 +126,8 @@ async def show_country_info(message: types.Message):
     else:
         await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
         conn.close()
+        
+#endregion
 
 async def main():
     logging.basicConfig(level=logging.INFO)
