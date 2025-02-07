@@ -87,7 +87,7 @@ async def process_country(message: types.Message, state: FSMContext):
         conn.commit()
         conn.close()
         await message.answer(f"🎉 Вы выбрали {country}! Теперь вы Президент этой страны! 🏛")
-        loggin.info(F"Был зарегистрирован новый пользователь с ID:{message.from_user.id}")
+        logging.info(F"Был зарегистрирован новый пользователь с ID:{message.from_user.id}")
         await state.clear()
     else:
         await message.answer("❌ Такой страны нет в списке. Попробуйте ещё раз.")

@@ -1,6 +1,7 @@
 # region imports
 
-import sqlite3, random, time, asyncio
+import sqlite3, random, time, asyncio, logging
+
 
 from aiogram import F, Router
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery, BotCommand
@@ -244,7 +245,7 @@ async def ban_user(user_id, admin_id):
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM admins WHERE user_id =?", (user_id,))
-        loggin.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
+        logging.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
     except BaseException as e:
         await bot.send_message(chat_id=admin, text="🚨Ошибка: " + str(e))
         return False
@@ -253,7 +254,7 @@ async def ban_user(user_id, admin_id):
     return True
 
 async def broadcast_message(message_text):
-    users = get_all_users()
+    users = await get_all_users()
     for user_id in users:
         try:
             await bot.send_message(chat_id=user_id, text=message_text)
@@ -321,6 +322,8 @@ async def ban_user(message: Message):
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
+    connection = sqlite3.connect("game.db")
+    cursor = connection.cursor()
 
     try:
         args = message.text.split()
