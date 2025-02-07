@@ -1,1 +1,39 @@
+# .gitignore для проекта на Aiogram с SQLite3
+
+# Игнорируем виртуальное окружение
 venv/
+.env
+
+# Игнорируем базу данных
+*.sqlite3
+game.db
+game.db-journal
+
+# Игнорируем файлы кэша и временные файлы
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+# Игнорируем файлы IDE и редакторов кода
+.vscode/
+.idea/
+*.iml
+
+# Игнорируем логи и отладочные файлы
+logs/
+*.log
+
+# Игнорируем файлы, связанные с Docker (если используется)
+*.dockerignore
+Dockerfile
+
+# Игнорируем файлы и папки, связанные с деплоем (если есть)
+*.swp
+*.swo
+*.pid
+
+# Игнорируем кэш pip
+pip-wheel-metadata/
+__pypackages__/
+>>>>>>> a35f1824fd7e85ad068be8b3ab5079a29d1451ba
