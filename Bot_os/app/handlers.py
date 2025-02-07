@@ -264,12 +264,13 @@ async def register_admin(message: Message, state: FSMContext):
 async def register_admin_password(message: Message, state: FSMContext):
     if message.text == ADMIN_PASSWORD:
         await message.reply("✅Пароль аутентификации успешно введен.\nВведите команду /admin для познания команд админа")
-        await state.clear
         logging.info(F"Добавлен админ с ID: {message.from_user.id}")
         await add_admin(message.from_user.id)
+        await state.clear()
+        return
     else:
         await message.reply("🚨Неверный пароль. Попробуйте снова.")
-        await state.reset_state()
+        await state.clear()
         
 @r.message(Command("admin"))
 async def admin_command(message: Message):
@@ -292,6 +293,9 @@ async def ban_user(message: Message):
         await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'")
         return
     user_id = int(args[1])
+    if user_id == admin:
+        ban_user(message.from_user.id, admin)
+        logging.info(F"Пользователь с ID: {message.from_user.id} пытался забанить разработчика!")
     await ban_user(user_id, message.from_user.id)
     await message.reply(F"❗️Пользователь с ID: {user_id} был забанен")
     
