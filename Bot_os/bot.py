@@ -114,6 +114,10 @@ async def show_info(message: types.Message):
         await message.answer(f"🆔 Имя: {name}\n🌍 Страна: {country}\n🏅 Роль: {role}\n💵 Деньги : {money}", reply_markup=keyboard_start)
     else:
         await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
+        
+@dp.message(Command("info_bot"))
+async def show_info_bot(message: Message):
+    await message.answer("🤖 Информация о боте:\n⚙️Version: 1.0.3\n🐍Language: Pythonn\n💾Database: Sqlite3\n🕹Powered by Miramar\nGithub: https://github.com/Miramaruna/MyBotEuropeGame", reply_markup=keyboard_start)
 
 #  Команда /country_info
 @dp.message(Command("country_info"))
