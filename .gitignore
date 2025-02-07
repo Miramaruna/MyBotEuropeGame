@@ -36,4 +36,5 @@ Dockerfile
 # Игнорируем кэш pip
 pip-wheel-metadata/
 __pypackages__/
->>>>>>> a35f1824fd7e85ad068be8b3ab5079a29d1451ba
+
+*config.py

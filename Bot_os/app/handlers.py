@@ -18,6 +18,7 @@ from aiogram.enums import ChatMemberStatus
 from app.keyboards import *
 from app.DB import *
 from bot import *
+from config import *
 
 # endregion
 
@@ -64,7 +65,7 @@ async def process_investigate(message: Message, state: FSMContext):
             Invest = False
             return
     except BaseException as e:
-        await message.reply("��� Ошибка: " + str(e))
+        await message.reply("� Ошибка: " + str(e))
         Invest = False
         return
         await state.clear()
@@ -161,6 +162,18 @@ async def help(message: Message):
     
 # region Need methods
 
+async def add_admin(user_id):
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO admins (user_id) VALUES (?)", (user_id,))
+    except BaseException as e:
+        await bot.send_message(chat_id=admin, text="❗️Ошибка: " + str(e))
+        return False
+    conn.commit()
+    conn.close()
+    return True
+
 async def transfer_money(money, user_id, is_positive):
     conn = sqlite3.connect("game.db")
     cursor = conn.cursor()
@@ -211,4 +224,77 @@ async def get_country_params(country):
     conn.close()
     return country_params
 
+async def chek_is_admin(user_id):
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM admins WHERE user_id =?", (user_id,))
+    admin = cursor.fetchone()
+    if admin:
+        return True
+    else:
+        return False
+    conn.close()
+    
+async def ban_user(user_id, admin_id):
+    conn = sqlite3.connect("game.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM admins WHERE user_id =?", (user_id,))
+        loggin.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
+    except BaseException as e:
+        await bot.send_message(chat_id=admin, text="🚨Ошибка: " + str(e))
+        return False
+    conn.commit()
+    conn.close()
+    return True
+
+# endregion
+
+# region admin
+
+class RegisterAdmin(StatesGroup):
+    password = State()
+
+@r.message(Command("register_admin"))
+async def register_admin(message: Message, state: FSMContext):
+    await message.reply("🔑Введите пороль для аутентификации: ")
+    await state.set_state(RegisterAdmin.password)
+    
+@r.message(RegisterAdmin.password)
+async def register_admin_password(message: Message, state: FSMContext):
+    if message.text == ADMIN_PASSWORD:
+        await message.reply("✅Пароль аутентификации успешно введен.\nВведите команду /admin для познания команд админа")
+        await state.clear
+        logging.info(F"Добавлен админ с ID: {message.from_user.id}")
+        await add_admin(message.from_user.id)
+    else:
+        await message.reply("🚨Неверный пароль. Попробуйте снова.")
+        await state.reset_state()
+        
+@r.message(Command("admin"))
+async def admin_command(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        return
+    await message.answer("ban 'ID' - бан игрока по ID\ngivement 'sum' 'ID' - Выдача денег по ID\ncreate_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\ndelete_country 'name' - удаление страны по названию\nget_users - получение всех пользователей с их ID и вообщем все информации\nget_country - получени всех стран с их параметрами")
+    
+@r.message(Command("ban"))
+async def ban_user(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался забанить игрока")
+        return
+    args = message.text.split()
+    if len(args)!= 2:
+        await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'")
+        return
+    user_id = int(args[1])
+    await ban_user(user_id, message.from_user.id)
+    await message.reply(F"❗️Пользователь с ID: {user_id} был забанен")
+    
+# @r.message(Command("givement"))
+    
 # endregion

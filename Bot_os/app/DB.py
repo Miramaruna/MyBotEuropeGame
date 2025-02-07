@@ -26,6 +26,12 @@ def create_database():
             temp_rost INTEGER DEFAULT 20
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admins (
+            user_id INTEGER PRIMARY KEY,
+            role TEXT DEFAULT 'Администратор'
+        )
+    ''')
 
     # Добавляем тестовые страны
     countries = [
