@@ -22,7 +22,8 @@ def create_database():
             name TEXT PRIMARY KEY,
             economy INTEGER,
             population INTEGER,
-            happiness INTEGER
+            happiness INTEGER,
+            temp_rost INTEGER DEFAULT 20
         )
     ''')
 
