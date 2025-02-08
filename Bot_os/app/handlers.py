@@ -1,6 +1,7 @@
 # region imports
 
-import sqlite3, random, time, asyncio
+import sqlite3, random, time, asyncio, logging
+
 
 from aiogram import F, Router
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery, BotCommand
@@ -240,7 +241,11 @@ async def get_user_params(user_id):
     return user
 
 async def broadcast_message(message_text):
+<<<<<<< HEAD
     users = await get_all_users_id()
+=======
+    users = await get_all_users()
+>>>>>>> de7afbac024772077448757f9278ae38693c0f54
     for user_id in users:
         try:
             await bot.send_message(chat_id=user_id, text=str(message_text))
@@ -314,7 +319,13 @@ async def ban_user(message: Message):
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
+<<<<<<< HEAD
     
+=======
+    connection = sqlite3.connect("game.db")
+    cursor = connection.cursor()
+
+>>>>>>> de7afbac024772077448757f9278ae38693c0f54
     try:
         args = message.text.split()
         if len(args) < 3:
