@@ -1,12 +1,11 @@
 import sqlite3
 
-# Создаем базу данных и таблицы
-def create_database():
-    conn = sqlite3.connect('game.db')
-    cursor = conn.cursor()
 
-    # Таблица пользователей
-    cursor.execute('''
+conn = sqlite3.connect('game.db')
+cursor = conn.cursor()
+
+ # Таблица пользователей
+cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             name TEXT,
@@ -17,16 +16,17 @@ def create_database():
     ''')
 
     # Таблица стран
-    cursor.execute('''
+cursor.execute('''
         CREATE TABLE IF NOT EXISTS countries (
             name TEXT PRIMARY KEY,
+            capital TEXT,
             economy INTEGER,
             population INTEGER,
             happiness INTEGER,
             temp_rost INTEGER DEFAULT 20
         )
     ''')
-    cursor.execute('''
+cursor.execute('''
         CREATE TABLE IF NOT EXISTS admins (
             user_id INTEGER PRIMARY KEY,
             role TEXT DEFAULT 'Администратор'
@@ -34,15 +34,13 @@ def create_database():
     ''')
 
     # Добавляем тестовые страны
-    countries = [
-        ("Франция", 100, 1000, 80),
-        ("Германия", 120, 1200, 85),
-        ("Испания", 90, 900, 75),
-        ("Россия", 150, 1500, 70),
-        ("Великобритания", 110, 1100, 88)
+countries = [
+    ('Paris', 'Франция', 2900, 68, 69.9, 20.2),
+    ('Berlin', 'Германия', 4000, 83, 71.3, 20.1),
+    ("Madrid" ,'Испания', 1800, 47, 67.9, 20),
+    ("Moskwa", 'Россия', 1700, 144, 55.5, 19.4),
+    ("London", 'Великобритания', 3200, 67, 70.1, 20.3)
     ]
-    cursor.executemany('INSERT OR IGNORE INTO countries (name, economy, population, happiness) VALUES (?, ?, ?, ?)', countries)
+cursor.executemany('INSERT OR IGNORE INTO countries (capital, name, economy, population, happiness, temp_rost) VALUES (?, ?, ?, ?, ?, ?)', countries)
 
-    conn.commit()
-
-create_database()
+conn.commit()

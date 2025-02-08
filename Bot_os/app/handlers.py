@@ -45,11 +45,9 @@ async def process_investigate(message: Message, state: FSMContext):
         Invest = False
         await state.clear()
         return
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     is_user = await chek_is_user(message.from_user.id)
     money = await get_money(message.from_user.id)
-    country = await get_country(message.from_user.id)
+    country = await get_country_from_users(message.from_user.id)
     if is_user == False:
         await message.reply("❌ Вы не зарегистрированы.")
         return
@@ -60,21 +58,21 @@ async def process_investigate(message: Message, state: FSMContext):
         try:
             await transfer_money(message.from_user.id, int(message.text), False)
             asyncio.create_task(invest_task(country, int(message.text), message.from_user.id))
+            await message.reply("💼 Инвестирование начато. Вы будете получать прибыль каждые 20 секунд.")
+            await state.clear()
         except BaseException as e:
             await message.reply("🚨 Ошибка: " + str(e))
             Invest = False
+            await state.clear()
             return
     except BaseException as e:
         await message.reply("� Ошибка: " + str(e))
         Invest = False
-        return
         await state.clear()
         conn.commit()
-        conn.close()
+        return
 
 async def invest_task(country, money, chat_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     Invest = True
     numOfInvest = 0
     while Invest:
@@ -90,8 +88,6 @@ async def invest_task(country, money, chat_id):
             Invest = False
             break
         await asyncio.sleep(20)
-    conn.commit()
-    conn.close()
 
 # endregion
     
@@ -100,8 +96,6 @@ async def invest_task(country, money, chat_id):
 @r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
 async def kop(message: Message):
     global kol_kop
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     is_user = await chek_is_user(message.from_user.id)
     if is_user == False:
         await message.reply("❌ Вы не зарегистрированы.")
@@ -115,7 +109,6 @@ async def kop(message: Message):
         return
     cursor.execute("UPDATE users SET money = money + 100 WHERE user_id = ?", (message.from_user.id,))
     conn.commit()
-    conn.close()
     await message.reply("💰 Вы успешно заработали 100 монет.", reply_markup=keyboard_start)
     
 @r.callback_query(F.data == "start_production")
@@ -131,11 +124,12 @@ async def money_from_country(callback_query: types.CallbackQuery):
     await callback_query.answer("🏭 Производство начато.\n⏳Каждую минуту вы будете получать свой доход.")
     fm_t = True
     while fm_t:
-        country = await get_country(user_id)
+        country = await get_country_from_users(user_id)
         params = await get_country_params(country)
-        economy = params[0] // 5
-        population = params[1] // 4
-        happiness = params[2] // 12
+        print(params)
+        economy = params[1] // 5
+        population = params[2] // 4
+        happiness = params[3] // 12
         income = economy + population * happiness
         await transfer_money(income, user_id, True)
         await bot.send_message(chat_id=chat_id, text=f"💰 Было получено {income} монет из страны {country}.")
@@ -167,20 +161,15 @@ async def get_photo(message: Message):
 # region Need methods
 
 async def add_admin(user_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO admins (user_id) VALUES (?)", (user_id,))
     except BaseException as e:
         await bot.send_message(chat_id=admin, text="❗️Ошибка: " + str(e))
         return False
     conn.commit()
-    conn.close()
     return True
 
 async def transfer_money(money, user_id, is_positive):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     try:
         if is_positive:
             cursor.execute("UPDATE users SET money = money + ? WHERE user_id =?", (money, user_id))
@@ -190,83 +179,78 @@ async def transfer_money(money, user_id, is_positive):
         await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
         return False
     conn.commit()
-    conn.close()
     return True
     
 async def chek_is_user(user_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     if user:
         return True
     else:
         return False
-    conn.close()
     
 async def get_money(user_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     cursor.execute("SELECT money FROM users WHERE user_id = ?", (user_id,))
     money = cursor.fetchone()
-    conn.close()
     return money[0]
     
-async def get_country(user_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
+async def get_country_from_users(user_id):
     cursor.execute("SELECT country FROM users WHERE user_id = ?", (user_id,))
     country = cursor.fetchone()
-    conn.close()
     return country[0]
 
 async def get_country_params(country):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT economy, population, happiness, temp_rost FROM countries WHERE name = ?", (country,))
+    cursor.execute("SELECT capital, economy, population, happiness, temp_rost FROM countries WHERE name = ?", (country,))
     country_params = cursor.fetchone()
-    conn.close()
     return country_params
 
 async def chek_is_admin(user_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM admins WHERE user_id =?", (user_id,))
+    cursor.execute("SELECT user_id FROM admins WHERE user_id = ?", (user_id,))
     admin = cursor.fetchone()
-    if admin:
+    if admin is None:
+       return  False
+    elif admin is not None:
         return True
     else:
         return False
-    conn.close()
     
 async def ban_user(user_id, admin_id):
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM admins WHERE user_id =?", (user_id,))
-        loggin.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
+        logging.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
     except BaseException as e:
         await bot.send_message(chat_id=admin, text="🚨Ошибка: " + str(e))
         return False
     conn.commit()
-    conn.close()
     return True
+            
+async def get_all_users():
+    cursor.execute("SELECT user_id, name, country, role, money FROM users")
+    users = cursor.fetchall()
+    return users
+
+async def get_all_users_id():
+    cursor.execute("SELECT user_id FROM users")
+    users = cursor.fetchall()
+    return [user[0] for user in users]
+
+async def get_user_params(user_id):
+    cursor.execute("SELECT name, country, role, money FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    return user
 
 async def broadcast_message(message_text):
-    users = get_all_users()
+    users = await get_all_users_id()
     for user_id in users:
         try:
-            await bot.send_message(chat_id=user_id, text=message_text)
+            await bot.send_message(chat_id=user_id, text=str(message_text))
         except TelegramBadRequest as e:
             print(f"Ошибка отправки пользователю {user_id}: {e}")
             
-async def get_all_users():
-    conn = sqlite3.connect("game.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, name, country, role, money FROM users")
-    users = cursor.fetchall()
-    conn.close()
-    return users
+async def get_all_country_params():
+    cursor.execute("SELECT capital, name, economy, population, happiness, temp_rost FROM countries")
+    countries = cursor.fetchall()
+    return countries
 
 # endregion
 
@@ -277,11 +261,20 @@ class RegisterAdmin(StatesGroup):
 
 @r.message(Command("register_admin"))
 async def register_admin(message: Message, state: FSMContext):
-    await message.reply("🔑Введите пороль для аутентификации: ")
+    await message.reply("🔑Введите пороль для аутентификации: \nОтмена - отмена")
     await state.set_state(RegisterAdmin.password)
     
 @r.message(RegisterAdmin.password)
 async def register_admin_password(message: Message, state: FSMContext):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == True:
+        await message.reply("🚨Вы уже администратор.")
+        await state.clear()
+        return
+    if message.text == "Отмена" or message.text == "отмена":
+        await message.reply("Отмена регистрации.")
+        await state.clear()
+        return
     if message.text == ADMIN_PASSWORD:
         await message.reply("✅Пароль аутентификации успешно введен.\nВведите команду /admin для познания команд админа")
         logging.info(F"Добавлен админ с ID: {message.from_user.id}")
@@ -321,36 +314,30 @@ async def ban_user(message: Message):
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
-
+    
     try:
         args = message.text.split()
         if len(args) < 3:
-            raise ValueError("Неверный формат команды. Используйте: /givement <id получателя> <сумма> Пример /givement id пользователя 100", reply_markup=keyboard_admin)
+            raise ValueError("Неверный формат команды. Используйте: /givement <id получателя> <сумма>. Пример: /givement <id пользователя> 100")
 
         receiver_id = int(args[1])
         amount = float(args[2])
-
-        cursor.execute("SELECT money FROM users WHERE user_id = ?", (message.from_user.id,))
-        sender_cash = cursor.fetchone()
-
-        if sender_cash is None:
-            raise ValueError("Пользователь-отправитель не найден", reply_markup=keyboard_admin)
-        
-        if sender_cash[0] < amount:
-            raise ValueError("Недостаточно средств для перевода", reply_markup=keyboard_admin)
 
         cursor.execute("UPDATE users SET money = money + ? WHERE user_id = ?", (amount, receiver_id))
 
         await bot.send_message(receiver_id, f'Вам начислено {amount}')
         
-        logging.info(F"Перевод был исполнен админом с ID: {message.from_user.id} пользователь с ID: {receiver_id} на число {amount} денег", reply_markup=keyboard_admin)
+        logging.info(f"Перевод был исполнен админом с ID: {message.from_user.id} пользователю с ID: {receiver_id} на сумму {amount} денег")
 
-        connection.commit()
+        conn.commit()
         await message.reply("Перевод выполнен успешно", reply_markup=keyboard_admin)
 
+    except ValueError as ve:
+        await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
     except Exception as e:
-        connection.rollback()
+        conn.rollback()
         await message.reply(f"Ошибка: {e}")
+
         
 class BroadcastForm(StatesGroup):
     waiting_for_message = State()
@@ -358,14 +345,19 @@ class BroadcastForm(StatesGroup):
 @r.message(Command("mailing"))
 async def start_broadcast(message: Message, state: FSMContext):
     if message.from_user.id == admin or admin2:
-        await message.answer("Введите сообщение для рассылки:", reply_markup=keyboard_admin)
+        await message.answer("Введите сообщение для рассылки:\n🚨Отмена - отмена", reply_markup=keyboard_admin)
         await state.set_state(BroadcastForm.waiting_for_message)
     else:
-        await message.answer("У вас нет прав для выполнения этой команды.")
+        await message.answer("🚨У вас нет прав для выполнения этой команды.")
     
 @r.message(BroadcastForm.waiting_for_message, F.content_type == ContentType.TEXT)
 async def get_broadcast_message(message: Message, state: FSMContext):
     broadcast_text = message.text
+    
+    if broadcast_text == "отмена" or broadcast_text == "Отмена":
+        await message.answer("Рассылка отменена.", reply_markup=keyboard_admin)
+        await state.clear()
+        return
 
     await broadcast_message(broadcast_text)
     
@@ -383,8 +375,59 @@ async def get_users(message: Message):
     if useri:
         response = "список всех пользователей:\n"
         for user_id, name, money, country, role in useri:
-            response += f"user_id - {user_id}, name - {name}, country - {money}, roleget - {country}, money- {role}\n"
+            response += f"user_id - {user_id}, name - {name}, country - {money}, role - {country}, money- {role}\n"
+    await message.reply(f"{response}")
+    
+@r.message(Command("get_country"))
+async def get_country(message: Message):
+    user_id = message.from_user.id
+    countries = await get_all_country_params()
+    is_admin = await chek_is_admin(user_id)
+    if is_admin == False:
+        await message.reply("У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался получить список стран")
+        return
+    if countries:
+        response = "список всех стран:\n"
+        for capital, name, economy, population, happiness, temp_rost in countries:
+            response += f"capital - {capital}, name - {name}, economy - {economy}, population - {population}, happiness - {happiness}, temp_rost - {temp_rost}\n"
     await message.reply(f"{response}")
 
+@r.message(Command("delete_country"))
+async def delete_country(message: Message):
+    try:
+        args = message.text.split()
+        if len(args)!= 2:
+            raise ValueError("Неверный формат команды. Используйте: /delete_country <название страны>")
+
+        name = args[1]
+
+        cursor.execute("DELETE FROM countries WHERE name = ?", (name,))
+
+        conn.commit()
+        await message.reply(f"Страна '{name}' успешно удалена.", reply_markup=keyboard_admin)
+    except ValueError as ve:
+        await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
+           
+@r.message(Command("create_country"))
+async def create_country(message: Message):
+
+    try:
+        args = message.text.split()
+        if len(args)!= 6:
+            raise ValueError("Неверный формат команды. Используйте: /create_country <название страны> <экономика> <население> <счастье> <темп роста>")
+
+        name = args[1]
+        economy = args[2]
+        population = args[3]
+        happiness = args[4]
+        temp_rost = args[5]
+
+        cursor.execute("INSERT INTO countries (name, economy, population, happiness, temp_rost) VALUES (?,?,?,?,?)", (name, economy, population, happiness, temp_rost))
+        await message.reply(f"Страна '{name}' успешно создана.", reply_markup=keyboard_admin)
+
+        conn.commit()
+    except ValueError as ve:
+        await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
     
 # endregion

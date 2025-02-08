@@ -7,6 +7,8 @@ button_start = [
     [KeyboardButton(text="/countries")],
     [KeyboardButton(text="/start")],
     [KeyboardButton(text="/help")],
+    [KeyboardButton(text="/admin")],
+    [KeyboardButton(text="/info_bot")],
     [KeyboardButton(text="Копать")]
 ]
 
@@ -26,7 +28,13 @@ button_admin = [
     [KeyboardButton(text="/mailing")],
     [KeyboardButton(text="/givement")],
     [KeyboardButton(text="/admin")],
-    [KeyboardButton(text="/register_admin")]
+    [KeyboardButton(text="/register_admin")],
+    [KeyboardButton(text="/get_country")],
+    [KeyboardButton(text="/create_country")],
+    [KeyboardButton(text="/delete_country")],
+    [KeyboardButton(text="/info_bot")],
+    [KeyboardButton(text="/help")],
+    [KeyboardButton(text="/start")]
 ]
 
 keyboard_admin = ReplyKeyboardMarkup(keyboard=button_admin, resize_keyboard=True, row_width=2)
