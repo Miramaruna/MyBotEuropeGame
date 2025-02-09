@@ -23,11 +23,19 @@ from config import *
 
 # endregion
 
+# region config
 r = Router()
 fm_t = False
+Pop_t = False
 chat_id = None
 admin = 5626265763 
 kol_kop = None
+user_states = {}
+user_states2 = {}
+party_state = {}
+party_t = False
+
+# endregion
 
 # region InCountryMethods
 
@@ -57,7 +65,7 @@ async def process_investigate(message: Message, state: FSMContext):
             await message.reply("⚠ У вас недостаточно средств для инвестирования.")
             return
         try:
-            await transfer_money(message.from_user.id, int(message.text), False)
+            await transfer_money(int(message.text), message.from_user.id, False)
             asyncio.create_task(invest_task(country, int(message.text), message.from_user.id))
             await message.reply("💼 Инвестирование начато. Вы будете получать прибыль каждые 20 секунд.")
             await state.clear()
@@ -73,26 +81,9 @@ async def process_investigate(message: Message, state: FSMContext):
         conn.commit()
         return
 
-async def invest_task(country, money, chat_id):
-    Invest = True
-    numOfInvest = 0
-    while Invest:
-        numOfInvest += 1
-        if numOfInvest == 6:
-            Invest = False
-            break
-        try:
-            cursor.execute("UPDATE countries SET economy = economy + ? WHERE name = ?", (money // 3, country))
-            await bot.send_message(chat_id=chat_id, text=f"✅ Было получено {money // 3} единиц экономики вашей страны.")
-        except BaseException as e:
-            await bot.send_message(chat_id=chat_id, text="🚨 Ошибка: " + str(e))
-            Invest = False
-            break
-        await asyncio.sleep(20)
-
 # endregion
     
-# region earn money
+# region earn money and product
 
 @r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
 async def kop(message: Message):
@@ -122,25 +113,120 @@ async def money_from_country(callback_query: types.CallbackQuery):
         await callback_query.answer("❌ Вы не зарегистрированы.")
         fm_t = False
         return
+    
+    if user_id in user_states and user_states[user_id] == "blocked":
+        await callback_query.answer("Производство уже запущено. Для начала нового производства нужно остановить текущее.")
+        return
+    
+    user_states[user_id] = "blocked"
+    
     await callback_query.answer("🏭 Производство начато.\n⏳Каждую минуту вы будете получать свой доход.")
     fm_t = True
-    while fm_t:
-        country = await get_country_from_users(user_id)
-        params = await get_country_params(country)
-        print(params)
-        economy = params[1] // 5
-        population = params[2] // 4
-        happiness = params[3] // 12
-        income = economy + population * happiness
-        await transfer_money(income, user_id, True)
-        await bot.send_message(chat_id=chat_id, text=f"💰 Было получено {income} монет из страны {country}.")
-        await asyncio.sleep(5)
+    asyncio.create_task(start_production_activate(chat_id, user_id))
         
 @r.callback_query(F.data == "stop_production")
 async def stop_production(callback_query: types.CallbackQuery):
     global fm_t
     await callback_query.answer("🛑 Производство остановлено.")
     fm_t = False
+    user_id = callback_query.from_user.id
+    
+    if user_id not in user_states or user_states[user_id] != "blocked":
+        await callback_query.answer("Производство не было запущено.")
+        return
+    user_states[user_id] = "unblocked"
+    
+@r.callback_query(F.data == "start_population")
+async def start_population(callback_query: types.CallbackQuery):
+    global pop_t
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await callback_query.answer("❌ Вы не зарегистрированы.")
+        fm_t = False
+        return
+    
+    if user_id in user_states2 and user_states2[user_id] == "blocked":
+        await callback_query.answer("Раздача товаров уже запущена. Для начала нового производства нужно остановить текущее.")
+        return
+    
+    user_states2[user_id] = "blocked"
+    
+    await callback_query.answer("🎁 Раздача товаров начата.\n⏳Каждую минуту вы будете получать свой доход.")
+    pop_t = True
+    asyncio.create_task(start_population_activate(chat_id, user_id))
+    
+@r.callback_query(F.data == "stop_population")
+async def stop_population(callback_query: types.CallbackQuery):
+    global pop_t
+    await callback_query.answer("🛑 Раздача товаров остановлена.")
+    pop_t = False
+    user_id = callback_query.from_user.id
+    
+    if user_id not in user_states2 or user_states2[user_id] != "blocked":
+        await callback_query.answer("Раздача товаров не была запущена.")
+        return
+    user_states2[user_id] = "unblocked"
+    
+class Party(StatesGroup):
+    amount = State()
+    
+@r.callback_query(F.data == "start_party_happy")
+async def start_party(callback_query: CallbackQuery, state: FSMContext):
+    global party_t
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await callback_query.answer("❌ Вы не зарегистрированы.")
+        party_t = False
+        return
+    
+    if user_id in user_states2 and user_states2[user_id] == "blocked":
+        await callback_query.answer("Праздник уже начат. Подождите 7 минут до окончания праздника")
+        return
+    
+    party_state[user_id] = "blocked"
+    
+    await callback_query.message.answer("Введите сумму которую потратите на праздник: ")
+    await state.set_state(Party.amount)
+    
+@r.message(Party.amount)
+async def party_accept_procces(message: Message, state: FSMContext):
+    global party_t
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    is_user = await chek_is_user(user_id)
+    
+    if is_user == False:
+        await message.reply("❌ Вы не зарегистрированы.")
+        party_t = False
+        return
+    
+    money = await get_money(message.from_user.id)
+    country = await get_country_from_users(message.from_user.id)
+    try:
+        if money < int(message.text):
+            await message.reply("⚠ У вас недостаточно средств для праздника.")
+            return
+        try:
+            await transfer_money(int(message.text), message.from_user.id, False)
+            asyncio.create_task(start_party_activate(chat_id, user_id, country))
+            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждую минуту.")
+            await state.clear()
+        except BaseException as e:
+            await message.reply("🚨 Ошибка: " + str(e))
+            party_t = False
+            await state.clear()
+            return
+    except BaseException as e:
+        await message.reply("🚨 Ошибка: " + str(e))
+        party_t = False
+        await state.clear()
+        conn.commit()
+        return
+    
 # endregion
     
 @r.message(Command("help"))
@@ -161,6 +247,110 @@ async def get_photo(message: Message):
     
 # region Need methods
 
+async def start_party_activate(chat_id, user_id, country):
+    global party_t
+    numOfParty = 0
+    numOfParty += 1
+    params = await get_country_params(country)
+    happiness_min = params[3] / 2000
+    happiness_max = params[3] / 1000
+    
+    if numOfParty >= 8:
+        await bot.send_message(chat_id, "Праздник закончился!")
+        party_t = False
+        party_state[user_id] = "unblocked"
+        return
+    
+    if current_happiness[3] >= 100:
+            await bot.send_message(chat_id, "🎉 Счастье достигло 100! Праздник завершен.")
+            party_t = False
+            party_state[user_id] = "unblocked"
+            break  # Остановка цикла
+
+    while party_t:
+        current_happiness = await get_all_country_params(country)  # Функция для получения текущего счастья
+
+        if current_happiness[3] >= 100:
+            await bot.send_message(chat_id, "🎉 Счастье достигло 100! Праздник завершен.")
+            party_t = False
+            party_state[user_id] = "unblocked"
+            break  # Остановка цикла
+
+        happiness = random.randint(happiness_min, happiness_max)
+        new_happiness = min(100, current_happiness + happiness)  # Ограничение 100
+
+        await bot.send_message(chat_id=chat_id, text=f"📈 Счастье увеличилось на {happiness}. Сейчас: {new_happiness}/100")
+        await transfer_happiness(new_happiness, country, True)  # Обновляем значение в БД
+        await asyncio.sleep(60)
+
+async def invest_task(country, money, chat_id):
+    Invest = True
+    numOfInvest = 0
+    economy_min = money // 10
+    economy_max = money // 5
+    while Invest:
+        numOfInvest += 1
+        economy = random.randint(economy_min, economy_max)
+        if numOfInvest == 6:
+            Invest = False
+            break
+        try:
+            cursor.execute("UPDATE countries SET economy = economy + ? WHERE name = ?", (economy, country))
+            await bot.send_message(chat_id=chat_id, text=f"✅ Было получено {economy} единиц экономики вашей страны.")
+        except BaseException as e:
+            await bot.send_message(chat_id=chat_id, text="🚨 Ошибка: " + str(e))
+            Invest = False
+            break
+        await asyncio.sleep(20)
+
+async def start_production_activate(chat_id, user_id):
+    global pop_t
+
+    # Вычисления для максимальных и минимальных доходов
+    def calculate_income_params(params):
+        economy_max = params[1] // 45
+        population_max = params[2] // 30
+        happiness_max = params[3] // 24
+        income_max = economy_max + population_max * happiness_max
+
+        econome_min = params[1] // 80
+        population_min = params[2] // 50
+        happiness_min = params[3] // 48
+        income_min = econome_min + population_min * happiness_min
+
+        return income_min, income_max
+
+    # Основной цикл
+    while fm_t:
+        country = await get_country_from_users(user_id)
+        params = await get_country_params(country)
+
+        # Проверка валидности данных
+        if not params or len(params) < 4:
+            logging.error(f"Invalid params for country {country}: {params}")
+            await asyncio.sleep(5)  # Пауза перед следующим циклом
+            continue
+
+        income_min, income_max = calculate_income_params(params)
+        income = random.randint(income_min, income_max)
+        
+        await transfer_money(income, user_id, True)
+        await bot.send_message(chat_id=chat_id, text=f"💰 Было получено {income} монет из страны {country}.")
+        await asyncio.sleep(5)
+
+async def start_population_activate(chat_id, user_id):
+    global pop_t
+    while pop_t:
+        country = await get_country_from_users(user_id)
+        params = await get_country_params(country)
+        population_max = params[2] // 50 + params[4] // 5
+        population_min = params[2] // 100 + params[4] // 15
+        population = random.randint(population_min, population_max)
+        
+        await transfer_population(population, country, True)
+        await bot.send_message(chat_id=chat_id, text=f"👩‍🍼 Было рождено {population} людей из страны {country}.")
+        await asyncio.sleep(5)
+
 async def add_admin(user_id):
     try:
         cursor.execute("INSERT INTO admins (user_id) VALUES (?)", (user_id,))
@@ -170,9 +360,33 @@ async def add_admin(user_id):
     conn.commit()
     return True
 
-async def transfer_money(money, user_id, is_positive):
+async def transfer_population(population, country, is_positive):
     try:
         if is_positive:
+            cursor.execute("UPDATE countries SET population = population + ? WHERE name =?", (population, country))
+        else:
+            cursor.execute("UPDATE countries SET population = population - ? WHERE name =?", (population, country))
+    except BaseException as e:
+        await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
+        return False
+    conn.commit()
+    return True
+
+async def transfer_happiness(happiness, country, is_positive):
+    try:
+        if is_positive:
+            cursor.execute("UPDATE countries SET happiness = happiness + ? WHERE name =?", (happiness, country))
+        else:
+            cursor.execute("UPDATE countries SET happiness = happiness - ? WHERE name =?", (happiness, country))
+    except BaseException as e:
+        await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
+        return False
+    conn.commit()
+    return True
+
+async def transfer_money(money, user_id, is_positive):
+    try:
+        if is_positive == True:
             cursor.execute("UPDATE users SET money = money + ? WHERE user_id =?", (money, user_id))
         else:
             cursor.execute("UPDATE users SET money = money - ? WHERE user_id =?", (money, user_id))
@@ -241,11 +455,7 @@ async def get_user_params(user_id):
     return user
 
 async def broadcast_message(message_text):
-<<<<<<< HEAD
     users = await get_all_users_id()
-=======
-    users = await get_all_users()
->>>>>>> de7afbac024772077448757f9278ae38693c0f54
     for user_id in users:
         try:
             await bot.send_message(chat_id=user_id, text=str(message_text))
@@ -319,13 +529,6 @@ async def ban_user(message: Message):
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
-<<<<<<< HEAD
-    
-=======
-    connection = sqlite3.connect("game.db")
-    cursor = connection.cursor()
-
->>>>>>> de7afbac024772077448757f9278ae38693c0f54
     try:
         args = message.text.split()
         if len(args) < 3:

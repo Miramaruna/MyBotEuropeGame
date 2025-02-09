@@ -35,11 +35,13 @@ cursor.execute('''
 
     # Добавляем тестовые страны
 countries = [
-    ('Paris', 'Франция', 2900, 68, 69.9, 20.2),
+    ('Paris', 'Франция', 3100, 68, 69.9, 20.2),
     ('Berlin', 'Германия', 4000, 83, 71.3, 20.1),
     ("Madrid" ,'Испания', 1800, 47, 67.9, 20),
-    ("Moskwa", 'Россия', 1700, 144, 55.5, 19.4),
-    ("London", 'Великобритания', 3200, 67, 70.1, 20.3)
+    ("Moskwa", 'Россия', 6320, 144, 55.5, 19.4),
+    ("London", 'Великобритания', 3200, 67, 70.1, 20.3),
+    ("Rome", 'Италия', 3200, 43, 70.7, 20.1)
+    
     ]
 cursor.executemany('INSERT OR IGNORE INTO countries (capital, name, economy, population, happiness, temp_rost) VALUES (?, ?, ?, ?, ?, ?)', countries)
 
