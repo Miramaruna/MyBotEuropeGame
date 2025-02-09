@@ -253,6 +253,11 @@ async def get_photo(message: Message):
     
 # region Need methods
 
+async def set_happy_max(country):
+    cursor.execute("UPDATE countries SET happy = 100 WHERE name = ?", country)
+    conn.commit()
+    return
+
 async def start_party_activate(chat_id, user_id, country, money):
     global party_t
     numOfParty = 0
@@ -273,6 +278,7 @@ async def start_party_activate(chat_id, user_id, country, money):
             await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
             party_t = False
             party_state[user_id] = "unblocked"
+            await set_happy_max(country)
             return
 
     while party_t:
@@ -282,6 +288,7 @@ async def start_party_activate(chat_id, user_id, country, money):
             await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
             party_t = False
             party_state[user_id] = "unblocked"
+            await set_happy_max(country)
             break
 
         happiness = random.randint(happiness_min, happiness_max)
@@ -576,6 +583,65 @@ async def add_tanks(callback: CallbackQuery):
         await callback.message.answer("1 Танк успешно прибыли в вашу армию!🪖")
     else:
         await callback.message.answer("Не достаточно денег📉")
+        
+from aiogram import types
+from aiogram.fsm.context import FSMContext
+import sqlite3
+
+# Обработчик ответа на сообщение с объявлением войны
+@r.message(F.text == "обьявить войну")
+async def declare_war(message: types.Message, state: FSMContext):
+    if message.reply_to_message:  # Проверяем, что это ответ на сообщение
+        attacker_id = message.from_user.id  # ID того, кто объявляет войну
+        defender_id = message.reply_to_message.from_user.id  # ID того, кому объявляют войну
+        
+        is_user1 = await chek_is_user(attacker_id)
+        is_user2 = await chek_is_user(defender_id)
+        is_war = await chek_is_war(attacker_id, defender_id)
+        is_army1 = await chek_is_army(attacker_id)
+        is_army2 = await chek_is_army(defender_id)
+        if is_user1 == False:
+            await message.reply("Вы не зарегистрированы!")
+            return
+        if is_user2 == False:
+            await message.reply("Враг не зарегистрирован!")
+            return
+        
+        if is_war == True:
+            await message.reply("Вы уже объявили войну с этим игроком!")
+            return
+
+        if is_army1 == False:
+            await message.reply("Вы не создали армию!")
+            return
+        
+        if is_army2 == False:
+            await message.reply("Враг не создали армию!")
+            return
+
+        cursor.execute(
+            "INSERT INTO wars (country1, country2, result) VALUES (?, ?, ?) ", (attacker_id, defender_id, "active"))
+
+        await message.reply(f"⚔ Война объявлена против <b>{message.reply_to_message.from_user.full_name}</b>!", parse_mode="HTML")
+        await bot.send_message(chat_id=defender_id, text=f"⚔ Вам обьявлена война против <b>{message.reply_to_message.from_user.full_name}</b>!", parse_mode="HTML")
+    else:
+        await message.reply("⚠ Чтобы объявить войну, ответьте на сообщение врага!")
+        
+async def chek_is_war(attacker_id, defender_id):
+    cursor.execute(f"SELECT * FROM wars WHERE (country1 = {attacker_id} AND country2 = {defender_id}) OR (country1 = {defender_id} AND country2 = {attacker_id})")
+    result = cursor.fetchone()
+    if result is not None:
+        return True
+    else:
+        return False
+    
+async def chek_is_army(user_id):
+    cursor.execute(f"SELECT * FROM army WHERE user_id = {user_id}")
+    result = cursor.fetchone()
+    if result is not None:
+        return True
+    else:
+        return False
 
 # endregion
 
@@ -591,6 +657,15 @@ async def register_admin(message: Message, state: FSMContext):
     
 @r.message(RegisterAdmin.password)
 async def register_admin_password(message: Message, state: FSMContext):
+    if message.text == "Отмена" or message.text == "отмена":
+        await message.reply("Отмена регистрации.")
+        await state.finish()
+        return
+    is_user = await chek_is_user(message.from_user.id)
+    if is_user == False:
+        await message.reply("Вы не зарегистрированы.")
+        await state.clear()
+        return
     is_admin = await chek_is_admin(message.from_user.id)
     if is_admin == True:
         await message.reply("🚨Вы уже администратор.")
@@ -620,7 +695,7 @@ async def admin_command(message: Message):
     await message.answer("ban 'ID' - бан игрока по ID\ngivement 'sum' 'ID' - Выдача денег по ID\ncreate_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\ndelete_country 'name' - удаление страны по названию\nget_users - получение всех пользователей с их ID и вообщем все информации\nget_country - получени всех стран с их параметрами", reply_markup=keyboard_admin)
     
 @r.message(Command("ban"))
-async def ban_user(message: Message):
+async def ban_user_message(message: Message):
     is_admin = await chek_is_admin(message.from_user.id)
     if is_admin == False:
         await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
@@ -632,7 +707,6 @@ async def ban_user(message: Message):
         return
     user_id = int(args[1])
     if user_id == admin:
-        ban_user(message.from_user.id, admin)
         logging.info(F"Пользователь с ID: {message.from_user.id} пытался забанить разработчика!")
     await ban_user(user_id, message.from_user.id)
     await message.reply(F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
@@ -739,15 +813,16 @@ async def create_country(message: Message):
     try:
         args = message.text.split()
         if len(args)!= 6:
-            raise ValueError("Неверный формат команды. Используйте: /create_country <название страны> <экономика> <население> <счастье> <темп роста>")
+            raise ValueError("Неверный формат команды. Используйте: /create_country <столица> <название страны> <экономика> <население> <счастье> <темп роста>")
 
-        name = args[1]
-        economy = args[2]
-        population = args[3]
-        happiness = args[4]
-        temp_rost = args[5]
+        capital = args[1]
+        name = args[2]
+        economy = args[3]
+        population = args[4]
+        happiness = args[5]
+        temp_rost = args[6]
 
-        cursor.execute("INSERT INTO countries (name, economy, population, happiness, temp_rost) VALUES (?,?,?,?,?)", (name, economy, population, happiness, temp_rost))
+        cursor.execute("INSERT INTO countries (capital, name, economy, population, happiness, temp_rost) VALUES (?, ?,?,?,?,?)", (capital, name, economy, population, happiness, temp_rost))
         await message.reply(f"Страна '{name}' успешно создана.", reply_markup=keyboard_admin)
 
         conn.commit()

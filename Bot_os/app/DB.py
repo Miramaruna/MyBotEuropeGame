@@ -42,6 +42,15 @@ cursor.execute('''
         )
     ''')
 
+cursor.execute('''
+        CREATE TABLE IF NOT EXISTS wars (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country1 TEXT,
+            country2 TEXT,
+            result TEXT
+        )
+    ''')
+
     # Добавляем тестовые страны
 countries = [
     ('Paris', 'Франция', 3100, 68, 69.9, 20.2),
