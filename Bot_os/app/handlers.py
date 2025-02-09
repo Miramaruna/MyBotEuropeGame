@@ -474,6 +474,109 @@ async def get_all_country_params():
     countries = cursor.fetchall()
     return countries
 
+async def add_army_tanks(id, price, number):
+    cursor.execute("UPDATE army SET tanks = tanks + ? WHERE user_id = ?", (number, id))
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
+    conn.commit()
+
+def get_army(user_id):
+    cursor.execute('SELECT soldiers, cars, tanks FROM army WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    return {'soldiers': result[0], 'cars': result[1], 'tanks': result[2]} if result else None
+
+def calculate_army_strength(army):
+    soldiers = army['soldiers']
+    cars = army['cars']
+    tanks = army['tanks']
+    
+    needed_soldiers_for_cars = cars * 3
+    needed_soldiers_for_tanks = tanks * 4
+    total_needed_soldiers = needed_soldiers_for_cars + needed_soldiers_for_tanks
+    
+    if soldiers < total_needed_soldiers:
+        return None 
+    
+    remaining_soldiers = soldiers - total_needed_soldiers
+    strength = remaining_soldiers + (cars * 5) + (tanks * 20)
+    return strength
+
+async def army_accept(id, price):
+    cursor.execute(f"SELECT money FROM users WHERE user_id = {id}")
+    c = cursor.fetchone()
+    money = c[0]
+    if money >= price:
+        return True
+    else: 
+        return False
+    
+async def add_army_slodiers(id, price, number):
+    cursor.execute("UPDATE army SET soldiers = soldiers + ? WHERE user_id = ?", (number, id))
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
+    conn.commit()
+    
+async def add_army_cars(id, price, number):
+    cursor.execute("UPDATE army SET cars = cars + ? WHERE user_id = ?", (number, id))
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
+    conn.commit()
+
+# endregion
+
+# region Army
+
+@r.message(F.text.in_({'Армия','армия','Army'}))
+async def army(message: Message):
+    cursor.execute(F"SELECT user_id FROM army WHERE user_id = {message.from_user.id}")
+    u = cursor.fetchone()
+    conn.commit
+    if u == None:
+        cursor.execute("INSERT INTO army(user_id, soldiers, cars, tanks) VALUES(?, ?, ?, ?)", (message.from_user.id, 10, 2, 1))
+        conn.commit()
+        await message.answer("Армия создана!🪖")
+    else:
+        cursor.execute(f"SELECT soldiers FROM army WHERE user_id = {message.from_user.id}")
+        s = cursor.fetchone()
+        soldiers = s[0]
+        cursor.execute(f"SELECT cars FROM army WHERE user_id = {message.from_user.id}")
+        c = cursor.fetchone()
+        cars = c[0]
+        cursor.execute(f"SELECT tanks FROM army WHERE user_id = {message.from_user.id}")
+        t = cursor.fetchone()
+        tanks = t[0]
+        conn.commit()
+        balls = soldiers + (cars * 5) + (tanks * 20)
+        need = (cars * 3) + (tanks *4)
+        if soldiers <= need:
+            await message.answer(f"Не хватка Солдат!{soldiers - need}", reply_markup=armmy_kb)
+        else:
+            await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖\nМашины - {cars}🛻\nТанки - {tanks}💥\nБаллы - {balls}", reply_markup=armmy_kb)
+
+@r.callback_query(F.data == 'sol')
+async def add_soldiers(callback: CallbackQuery):
+    acc = await army_accept(callback.from_user.id, 100)
+    if acc == True:
+        await add_army_slodiers(callback.from_user.id, 100, 10)
+        await callback.message.answer("10 Солдат успешно прибыли в вашу армию!🪖")
+    else:
+        await callback.message.answer("Не достаточно денег📉")
+
+@r.callback_query(F.data == 'car')
+async def add_сars(callback: CallbackQuery):
+    acc = await army_accept(callback.from_user.id, 1000)
+    if acc == True:
+        await add_army_cars(callback.from_user.id, 1000, 5)
+        await callback.message.answer("5 Машин успешно прибыли в вашу армию!🪖")
+    else:
+        await callback.message.answer("Не достаточно денег📉")
+
+@r.callback_query(F.data == 'tan')
+async def add_tanks(callback: CallbackQuery):
+    acc = await army_accept(callback.from_user.id, 3000)
+    if acc == True:
+        await add_army_tanks(callback.from_user.id, 3000, 1)
+        await callback.message.answer("1 Танк успешно прибыли в вашу армию!🪖")
+    else:
+        await callback.message.answer("Не достаточно денег📉")
+
 # endregion
 
 # region admin

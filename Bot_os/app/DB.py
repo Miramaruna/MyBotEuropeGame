@@ -33,6 +33,15 @@ cursor.execute('''
         )
     ''')
 
+cursor.execute('''
+        CREATE TABLE IF NOT EXISTS army (
+            user_id INTEGER PRIMARY KEY,
+            soldiers INTEGER DEFAULT 0,
+            cars INTEGER DEFAULT 0,
+            tanks INTEGER DEFAULT 0
+        )
+    ''')
+
     # Добавляем тестовые страны
 countries = [
     ('Paris', 'Франция', 3100, 68, 69.9, 20.2),
