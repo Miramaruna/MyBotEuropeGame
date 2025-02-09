@@ -1,6 +1,6 @@
 # region imports
 
-import sqlite3, random, time, asyncio, logging
+import sqlite3, random, time, asyncio, logging, math
 
 
 from aiogram import F, Router
@@ -210,10 +210,16 @@ async def party_accept_procces(message: Message, state: FSMContext):
         if money < int(message.text):
             await message.reply("⚠ У вас недостаточно средств для праздника.")
             return
+        if int(message.text) <= 500:
+            await message.reply("Ваше население взбушевалось из-за маленького праздника -10 счастья")
+            await transfer_happiness(10, country, False)
+            return
+            
         try:
             await transfer_money(int(message.text), message.from_user.id, False)
-            asyncio.create_task(start_party_activate(chat_id, user_id, country))
-            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждую минуту.")
+            asyncio.create_task(start_party_activate(chat_id, user_id, country, int(message.text)))
+            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждые 30 секунд.")
+            party_t = True
             await state.clear()
         except BaseException as e:
             await message.reply("🚨 Ошибка: " + str(e))
@@ -247,41 +253,42 @@ async def get_photo(message: Message):
     
 # region Need methods
 
-async def start_party_activate(chat_id, user_id, country):
+async def start_party_activate(chat_id, user_id, country, money):
     global party_t
     numOfParty = 0
     numOfParty += 1
     params = await get_country_params(country)
-    happiness_min = params[3] / 2000
-    happiness_max = params[3] / 1000
+    happiness_min = math.ceil(money / 2000)
+    happiness_max = math.ceil(money / 500)
+    party_t = True
+    await transfer_happiness(30, country, False)
     
     if numOfParty >= 8:
-        await bot.send_message(chat_id, "Праздник закончился!")
+        await bot.send_message(chat_id=chat_id, text="Праздник закончился!")
         party_t = False
         party_state[user_id] = "unblocked"
         return
     
-    if current_happiness[3] >= 100:
-            await bot.send_message(chat_id, "🎉 Счастье достигло 100! Праздник завершен.")
+    if params[3] >= 100:
+            await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
             party_t = False
             party_state[user_id] = "unblocked"
-            break  # Остановка цикла
+            return
 
     while party_t:
-        current_happiness = await get_all_country_params(country)  # Функция для получения текущего счастья
-
+        current_happiness = await get_country_params(country)
+        
         if current_happiness[3] >= 100:
-            await bot.send_message(chat_id, "🎉 Счастье достигло 100! Праздник завершен.")
+            await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
             party_t = False
             party_state[user_id] = "unblocked"
-            break  # Остановка цикла
+            break
 
         happiness = random.randint(happiness_min, happiness_max)
-        new_happiness = min(100, current_happiness + happiness)  # Ограничение 100
 
-        await bot.send_message(chat_id=chat_id, text=f"📈 Счастье увеличилось на {happiness}. Сейчас: {new_happiness}/100")
-        await transfer_happiness(new_happiness, country, True)  # Обновляем значение в БД
-        await asyncio.sleep(60)
+        await bot.send_message(chat_id=chat_id, text=f"📈 Счастье увеличилось на {happiness}.")
+        await transfer_happiness(happiness, country, True)  # Обновляем значение в БД
+        await asyncio.sleep(5)
 
 async def invest_task(country, money, chat_id):
     Invest = True
