@@ -264,7 +264,7 @@ async def get_photo(message: Message):
 async def show_map(message: Message):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Открыть карту", web_app=WebAppInfo(url="https://www.flickr.com/photos/202286975@N06/54326715216/in/dateposted-public/"))]
+            [InlineKeyboardButton(text="Открыть карту", web_app=WebAppInfo(url="https://your-site.com/map"))]
         ]
     )
     
@@ -275,7 +275,7 @@ async def show_map(message: Message):
 # region Need methods
 
 async def set_happy_max(country):
-    cursor.execute("UPDATE countries SET happiness = 100 WHERE name = ?", country)
+    cursor.execute("UPDATE countries SET happy = 100 WHERE name = ?", country)
     conn.commit()
     return
 
@@ -509,7 +509,7 @@ async def get_all_country_params():
 
 async def add_army_tanks(id, price, number):
     cursor.execute("UPDATE army SET tanks = tanks + ? WHERE user_id = ?", (number, id))
-    await transfer_money(price, id, False)
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
     conn.commit()
 
 def get_army(user_id):
@@ -543,32 +543,13 @@ async def army_accept(id, price):
         return False
     
 async def add_army_slodiers(id, price, number):
-    country = await get_country_from_users(id)
-    params = await get_country_params(country)
-    happiness = params[3]
-    population = params[3]
-    counter_happiness = math.ceil(happiness / 1000)
-    if population < 100:
-        await bot.send_message(chat_id=id, text=f"У вашего населения меньше 100\nВаше актуальное население: {population}")
-        return
-    if population < number:
-        await bot.send_message(chat_id=id, text=f"У вашего населения меньше чем вы хотите за вербовать: {number}\nВаше население: {population}")
-        return
-    if happiness < 20:
-        await bot.send_message(chat_id=id, text=f"У ваше счастье меньше 20\nВаше актуальное счастье: {happiness}")
-        return
-    if counter_happiness > happiness:
-        await bot.send_message(chat_id=id, text=f"Вы слишком много вербуете солдатов население в недовольствие!")
-        return
     cursor.execute("UPDATE army SET soldiers = soldiers + ? WHERE user_id = ?", (number, id))
-    await transfer_happiness(counter_happiness, country, False)
-    await transfer_population(number, country, False)
-    await transfer_money(price, id, False)
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
     conn.commit()
     
 async def add_army_cars(id, price, number):
     cursor.execute("UPDATE army SET cars = cars + ? WHERE user_id = ?", (number, id))
-    await transfer_money(price, id, False)
+    cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (price, id))
     conn.commit()
     
 async def chek_is_war(attacker_id, defender_id):
@@ -616,11 +597,7 @@ async def army(message: Message):
         if soldiers <= need:
             await message.answer(f"Не хватка Солдат!{soldiers - need}", reply_markup=armmy_kb)
         else:
-            await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖\nМашины - {cars}🛻\nТанки - {tanks}💥\nБаллы - {balls}\nДля познания команд отношении введите - /army_peace", reply_markup=armmy_kb)
-
-@r.message(Command("/army_peace"))
-async def army_peace_help(message: Message):
-    await message.answer("Команды для отношении", reply_markup=keyboard_army_peace)
+            await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖\nМашины - {cars}🛻\nТанки - {tanks}💥\nБаллы - {balls}", reply_markup=armmy_kb)
 
 @r.callback_query(F.data == 'sol')
 async def add_soldiers(callback: CallbackQuery):
@@ -950,7 +927,7 @@ async def create_country(message: Message):
     except ValueError as ve:
         await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
         
-@r.message(Command('ban_admin'))
+@router.message(Command('ban_admin'))
 async def ban_admin(message: Message, state:FSMContext):
     if message.from_user.id == admin:
         await message.answer("Введите ID админа для удаления🪪:")
@@ -958,7 +935,7 @@ async def ban_admin(message: Message, state:FSMContext):
     else:
         await message.reply("У вас не доступа!❌")
 
-    @r.message(Ban.id)
+    @router.message(Ban.id)
     async def ban_admin_True(message: Message, state: FSMContext):
         cursor.execute(f"SELECT user_id FROM admins WHERE user_id = {message.text}")
         a = cursor.fetchone()

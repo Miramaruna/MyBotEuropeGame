@@ -50,6 +50,15 @@ cursor.execute('''
             result TEXT
         )
     ''')
+cursor.execute('''
+        CREATE TABLE IF NOT EXISTS peace_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL, 
+            status TEXT DEFAULT 'pending',
+            PRIMARY KEY (sender_id, receiver_id)
+        )
+    ''')
 
     # Добавляем тестовые страны
 countries = [
