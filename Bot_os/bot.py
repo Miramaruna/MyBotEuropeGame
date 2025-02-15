@@ -122,6 +122,22 @@ async def show_info(message: types.Message):
     else:
         await message.answer("⚔️У вас нет ни одного сражения.")
         
+@dp.message(Command("country_info"))
+async def show_country_info(message: types.Message):
+    user_id = message.from_user.id  # Инициализация user_id
+    is_user = await chek_is_user(user_id)
+    user = await get_user_params(user_id)
+    if is_user:
+        country = await get_country_from_users(user_id)
+        country = await get_country_params(user[1])  # Передаём user_id
+        if country:
+            capital, economy, population, happiness, temp_rost, *rest = country  # Извлечение первых трех значений, остальные игнорируются
+            await message.answer(f"🌍 Информация о стране {user[1]}:\n🏛 Столица: {capital}\n💰 Экономика: {economy}\n👥 Население: {population}\n😊 Счастье: {happiness}\n📈 Темп роста: {temp_rost}%", reply_markup=keyboard_countries_methods)
+        else:
+            await message.answer("⚠ Информация о вашей стране отсутствует.")
+    else:
+        await message.answer("⚠ Вы не зарегистрированы. Используйте /register.")
+        
 @dp.message(Command("info_bot"))
 async def show_info_bot(message: Message):
     await message.answer("🤖 Информация о боте:\n⚙️ Версия: 1.1.0\n🐍 Язык: Python\n💾 База данных: Sqlite3\n🕹 Разработчик: Miramar\n🔗 Github: https://github.com/Miramaruna/MyBotEuropeGame", reply_markup=keyboard_start)

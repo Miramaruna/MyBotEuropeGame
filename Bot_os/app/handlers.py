@@ -45,246 +45,12 @@ class RegisterAdmin(StatesGroup):
     
 class BroadcastForm(StatesGroup):
     waiting_for_message = State()
-
-# endregion
-
-# region InCountryMethods
-
+    
 class Investigate(StatesGroup):
     num = State()
 
-@r.callback_query(F.data == "invest")
-async def investigate(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("💰 Введите сумму инвестиции на вашу страну:\n🚫Отмена - отмена")
-    await state.set_state(Investigate.num)
-    
-@r.message(Investigate.num)
-async def process_investigate(message: Message, state: FSMContext):
-    global numOfInvest, Invest
-    if message.text == "Отмена":
-        Invest = False
-        await state.clear()
-        return
-    is_user = await chek_is_user(message.from_user.id)
-    money = await get_money(message.from_user.id)
-    country = await get_country_from_users(message.from_user.id)
-    if is_user == False:
-        await message.reply("❌ Вы не зарегистрированы.")
-        return
-    try:
-        if money < int(message.text):
-            await message.reply("⚠ У вас недостаточно средств для инвестирования.")
-            return
-        try:
-            await transfer_money(int(message.text), message.from_user.id, False)
-            asyncio.create_task(invest_task(country, int(message.text), message.from_user.id))
-            await message.reply("💼 Инвестирование начато. Вы будете получать прибыль каждые 20 секунд.")
-            await state.clear()
-        except BaseException as e:
-            await message.reply("🚨 Ошибка: " + str(e))
-            Invest = False
-            await state.clear()
-            return
-    except BaseException as e:
-        await message.reply("� Ошибка: " + str(e))
-        Invest = False
-        await state.clear()
-        conn.commit()
-        return
-    
-@r.callback_query(F.data == "start_party_happy")
-async def start_party(callback_query: CallbackQuery, state: FSMContext):
-    global party_t
-    user_id = callback_query.from_user.id
-    chat_id = callback_query.message.chat.id
-    is_user = await chek_is_user(user_id)
-    if is_user == False:
-        await callback_query.answer("❌ Вы не зарегистрированы.")
-        party_t = False
-        return
-    
-    if user_id in user_states2 and user_states2[user_id] == "blocked":
-        await callback_query.answer("Праздник уже начат. Подождите 7 минут до окончания праздника")
-        return
-    
-    party_state[user_id] = "blocked"
-    
-    await callback_query.message.answer("Введите сумму которую потратите на праздник: ")
-    await state.set_state(Party.amount)
-    
-@r.message(Party.amount)
-async def party_accept_procces(message: Message, state: FSMContext):
-    global party_t
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    is_user = await chek_is_user(user_id)
-    
-    if is_user == False:
-        await message.reply("❌ Вы не зарегистрированы.")
-        party_t = False
-        return
-    
-    money = await get_money(message.from_user.id)
-    country = await get_country_from_users(message.from_user.id)
-    try:
-        if money < int(message.text):
-            await message.reply("⚠ У вас недостаточно средств для праздника.")
-            return
-        if int(message.text) <= 500:
-            await message.reply("Ваше население взбушевалось из-за маленького праздника -10 счастья")
-            await transfer_happiness(10, country, False)
-            return
-            
-        try:
-            await transfer_money(int(message.text), message.from_user.id, False)
-            asyncio.create_task(start_party_activate(chat_id, user_id, country, int(message.text)))
-            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждые 30 секунд.")
-            party_t = True
-            await state.clear()
-        except BaseException as e:
-            await message.reply("🚨 Ошибка: " + str(e))
-            party_t = False
-            await state.clear()
-            return
-    except BaseException as e:
-        await message.reply("🚨 Ошибка: " + str(e))
-        party_t = False
-        await state.clear()
-        conn.commit()
-        return
-
 # endregion
-    
-# region earn money and product
 
-@r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
-async def kop(message: Message):
-    global kol_kop
-    is_user = await chek_is_user(message.from_user.id)
-    if is_user == False:
-        await message.reply("❌ Вы не зарегистрированы.")
-        return
-    if kol_kop is None:
-        kol_kop = 0
-    if kol_kop < 10:
-        kol_kop += 1
-    elif kol_kop >= 10:
-        await message.reply("⛏ Вы уже копали 10 раз.")
-        return
-    cursor.execute("UPDATE users SET money = money + 100 WHERE user_id = ?", (message.from_user.id,))
-    conn.commit()
-    await message.reply("💰 Вы успешно заработали 100 монет.", reply_markup=keyboard_start)
-    
-@r.callback_query(F.data == "start_production")
-async def money_from_country(callback_query: types.CallbackQuery):
-    global fm_t
-    user_id = callback_query.from_user.id
-    chat_id = callback_query.message.chat.id
-    is_user = await chek_is_user(user_id)
-    if is_user == False:
-        await callback_query.answer("❌ Вы не зарегистрированы.")
-        fm_t = False
-        return
-    
-    if user_id in user_states and user_states[user_id] == "blocked":
-        await callback_query.answer("Производство уже запущено. Для начала нового производства нужно остановить текущее.")
-        return
-    
-    user_states[user_id] = "blocked"
-    
-    await callback_query.answer("🏭 Производство начато.\n⏳Каждую минуту вы будете получать свой доход.")
-    fm_t = True
-    asyncio.create_task(start_production_activate(chat_id, user_id))
-        
-@r.callback_query(F.data == "stop_production")
-async def stop_production(callback_query: types.CallbackQuery):
-    global fm_t
-    await callback_query.answer("🛑 Производство остановлено.")
-    fm_t = False
-    user_id = callback_query.from_user.id
-    
-    if user_id not in user_states or user_states[user_id] != "blocked":
-        await callback_query.answer("Производство не было запущено.")
-        return
-    user_states[user_id] = "unblocked"
-    
-@r.callback_query(F.data == "start_population")
-async def start_population(callback_query: types.CallbackQuery):
-    global pop_t
-    user_id = callback_query.from_user.id
-    chat_id = callback_query.message.chat.id
-    is_user = await chek_is_user(user_id)
-    if is_user == False:
-        await callback_query.answer("❌ Вы не зарегистрированы.")
-        fm_t = False
-        return
-    
-    if user_id in user_states2 and user_states2[user_id] == "blocked":
-        await callback_query.answer("Раздача товаров уже запущена. Для начала нового производства нужно остановить текущее.")
-        return
-    
-    user_states2[user_id] = "blocked"
-    
-    await callback_query.answer("🎁 Раздача товаров начата.\n⏳Каждую минуту вы будете получать свой доход.")
-    pop_t = True
-    asyncio.create_task(start_population_activate(chat_id, user_id))
-    
-@r.callback_query(F.data == "stop_population")
-async def stop_population(callback_query: types.CallbackQuery):
-    global pop_t
-    await callback_query.answer("🛑 Раздача товаров остановлена.")
-    pop_t = False
-    user_id = callback_query.from_user.id
-    
-    if user_id not in user_states2 or user_states2[user_id] != "blocked":
-        await callback_query.answer("Раздача товаров не была запущена.")
-        return
-    user_states2[user_id] = "unblocked"
-    
-# endregion
-    
-# region guest methods
-@r.message(Command("help"))
-async def help(message: Message):
-    await message.reply("📜 Список доступных команд:\n"
-                        "/start - 🏁 Начать игру\n"
-                        "/register - 📝 Зарегистрироваться\n"
-                        "/invest - 💰 Инвестировать деньги в экономику\n"
-                        "/countries - 🌎 Список стран\n"
-                        "Копать - ⛏ Заработать денег\n"
-                        "/info - ℹ Информация о вас\n"
-                        "/country_info - 🌍 Информация о вашей стране\n"
-                        "/help - ❓ Помощь", reply_markup=keyboard_start)
-    
-@r.message(F.photo)
-async def get_photo(message: Message):
-    await message.answer(f"ID фота: {message.photo[-1].file_id}")
-    
-@r.message(Command("map"))
-async def show_map(message: Message):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Открыть карту", web_app=WebAppInfo(url="https://www.flickr.com/photos/202286975@N06/54326715216/in/dateposted-public/"))]
-        ]
-    )
-    
-    await message.answer("Нажми кнопку, чтобы открыть карту:", reply_markup=keyboard)
-    
-@r.message(Command("list_economy"))
-async def show_tierlist(message: types.Message):
-    cursor.execute("SELECT name, economy FROM countries ORDER BY economy DESC")
-    economy_list = cursor.fetchall()
-
-    if not economy_list:
-        await message.answer("⚠ Данные отсутствуют.")
-        return
-
-    tier_list = "\n".join([f"🏆 {i+1}. {name} - {economy}💰" for i, (name, economy) in enumerate(economy_list)])
-
-    await message.answer(f"📊 **Тир-лист экономики**:\n{tier_list}")
-    
-# endregion 
-    
 # region Need methods
 
 async def set_happy_max(country):
@@ -597,10 +363,426 @@ async def chek_is_army(user_id):
         return True
     else:
         return False
+    
+def get_population_tier_list():
+    """ Получение тир-листа стран по населению (ТОП-5) """
+    cursor.execute("SELECT name, population FROM countries ORDER BY population DESC LIMIT 5")
+    top_countries = cursor.fetchall()
+    
+    if not top_countries:
+        return "📊 **Тир-лист по населению пуст**"
+
+    tier_list = "📊 **Тир-лист по населению:**\n"
+    for idx, (country, population) in enumerate(top_countries, 1):
+        tier_list += f"{idx}. {country} — {population} 👥\n"
+    
+    return tier_list
+
+def get_army(user_id):
+    """ Получение армии пользователя из БД """
+    cursor.execute("SELECT soldiers, cars, tanks FROM army WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    return {'soldiers': result[0], 'cars': result[1], 'tanks': result[2]} if result else None
+
+def update_army(user_id, soldiers, cars, tanks):
+    """ Обновление армии в БД """
+    cursor.execute("""
+        UPDATE army SET soldiers = ?, cars = ?, tanks = ? WHERE user_id = ?
+    """, (max(0, soldiers), max(0, cars), max(0, tanks), user_id))
+    conn.commit()
+
+def check_war_status(user_1_id, user_2_id):
+    """ Проверка, находятся ли игроки в войне и не в перемирии """
+    cursor.execute("""
+        SELECT result FROM wars WHERE 
+        (country1 = ? AND country2 = ?) OR (country1 = ? AND country2 = ?)
+    """, (user_1_id, user_2_id, user_2_id, user_1_id))
+    
+    war = cursor.fetchone()
+    return war and war[0] == "active"  # Если статус "active", значит идет война
+
+def calculate_army_strength(army):
+    """ Вычисление силы армии """
+    soldiers, cars, tanks = army['soldiers'], army['cars'], army['tanks']
+    needed_soldiers = (cars * 3) + (tanks * 4)
+
+    if soldiers < needed_soldiers:
+        return None  # Недостаточно солдат для управления техникой
+
+    return (soldiers - needed_soldiers) + (cars * 5) + (tanks * 20)
 
 # endregion
 
+# region InCountryMethods
+
+@r.callback_query(F.data == "invest")
+async def investigate(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.answer("💰 Введите сумму инвестиции на вашу страну:\n🚫Отмена - отмена")
+    await state.set_state(Investigate.num)
+    
+@r.message(Investigate.num)
+async def process_investigate(message: Message, state: FSMContext):
+    global numOfInvest, Invest
+    if message.text == "Отмена":
+        Invest = False
+        await state.clear()
+        return
+    is_user = await chek_is_user(message.from_user.id)
+    money = await get_money(message.from_user.id)
+    country = await get_country_from_users(message.from_user.id)
+    if is_user == False:
+        await message.reply("❌ Вы не зарегистрированы.")
+        return
+    try:
+        if money < int(message.text):
+            await message.reply("⚠ У вас недостаточно средств для инвестирования.")
+            return
+        try:
+            await transfer_money(int(message.text), message.from_user.id, False)
+            asyncio.create_task(invest_task(country, int(message.text), message.from_user.id))
+            await message.reply("💼 Инвестирование начато. Вы будете получать прибыль каждые 20 секунд.")
+            await state.clear()
+        except BaseException as e:
+            await message.reply("🚨 Ошибка: " + str(e))
+            Invest = False
+            await state.clear()
+            return
+    except BaseException as e:
+        await message.reply("� Ошибка: " + str(e))
+        Invest = False
+        await state.clear()
+        conn.commit()
+        return
+    
+@r.callback_query(F.data == "start_party_happy")
+async def start_party(callback_query: CallbackQuery, state: FSMContext):
+    global party_t
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await callback_query.answer("❌ Вы не зарегистрированы.")
+        party_t = False
+        return
+    
+    if user_id in user_states2 and user_states2[user_id] == "blocked":
+        await callback_query.answer("Праздник уже начат. Подождите 7 минут до окончания праздника")
+        return
+    
+    party_state[user_id] = "blocked"
+    
+    await callback_query.message.answer("Введите сумму которую потратите на праздник: ")
+    await state.set_state(Party.amount)
+    
+@r.message(Party.amount)
+async def party_accept_procces(message: Message, state: FSMContext):
+    global party_t
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    is_user = await chek_is_user(user_id)
+    
+    if is_user == False:
+        await message.reply("❌ Вы не зарегистрированы.")
+        party_t = False
+        return
+    
+    money = await get_money(message.from_user.id)
+    country = await get_country_from_users(message.from_user.id)
+    try:
+        if money < int(message.text):
+            await message.reply("⚠ У вас недостаточно средств для праздника.")
+            return
+        if int(message.text) <= 500:
+            await message.reply("Ваше население взбушевалось из-за маленького праздника -10 счастья")
+            await transfer_happiness(10, country, False)
+            return
+            
+        try:
+            await transfer_money(int(message.text), message.from_user.id, False)
+            asyncio.create_task(start_party_activate(chat_id, user_id, country, int(message.text)))
+            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждые 30 секунд.")
+            party_t = True
+            await state.clear()
+        except BaseException as e:
+            await message.reply("🚨 Ошибка: " + str(e))
+            party_t = False
+            await state.clear()
+            return
+    except BaseException as e:
+        await message.reply("🚨 Ошибка: " + str(e))
+        party_t = False
+        await state.clear()
+        conn.commit()
+        return
+
+# endregion
+    
+# region earn money and product
+
+@r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
+async def kop(message: Message):
+    global kol_kop
+    is_user = await chek_is_user(message.from_user.id)
+    if is_user == False:
+        await message.reply("❌ Вы не зарегистрированы.")
+        return
+    if kol_kop is None:
+        kol_kop = 0
+    if kol_kop < 10:
+        kol_kop += 1
+    elif kol_kop >= 10:
+        await message.reply("⛏ Вы уже копали 10 раз.")
+        return
+    cursor.execute("UPDATE users SET money = money + 100 WHERE user_id = ?", (message.from_user.id,))
+    conn.commit()
+    await message.reply("💰 Вы успешно заработали 100 монет.", reply_markup=keyboard_start)
+    
+@r.callback_query(F.data == "start_production")
+async def money_from_country(callback_query: types.CallbackQuery):
+    global fm_t
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await callback_query.answer("❌ Вы не зарегистрированы.")
+        fm_t = False
+        return
+    
+    if user_id in user_states and user_states[user_id] == "blocked":
+        await callback_query.answer("Производство уже запущено. Для начала нового производства нужно остановить текущее.")
+        return
+    
+    user_states[user_id] = "blocked"
+    
+    await callback_query.answer("🏭 Производство начато.\n⏳Каждую минуту вы будете получать свой доход.")
+    fm_t = True
+    asyncio.create_task(start_production_activate(chat_id, user_id))
+        
+@r.callback_query(F.data == "stop_production")
+async def stop_production(callback_query: types.CallbackQuery):
+    global fm_t
+    await callback_query.answer("🛑 Производство остановлено.")
+    fm_t = False
+    user_id = callback_query.from_user.id
+    
+    if user_id not in user_states or user_states[user_id] != "blocked":
+        await callback_query.answer("Производство не было запущено.")
+        return
+    user_states[user_id] = "unblocked"
+    
+@r.callback_query(F.data == "start_population")
+async def start_population(callback_query: types.CallbackQuery):
+    global pop_t
+    user_id = callback_query.from_user.id
+    chat_id = callback_query.message.chat.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await callback_query.answer("❌ Вы не зарегистрированы.")
+        fm_t = False
+        return
+    
+    if user_id in user_states2 and user_states2[user_id] == "blocked":
+        await callback_query.answer("Раздача товаров уже запущена. Для начала нового производства нужно остановить текущее.")
+        return
+    
+    user_states2[user_id] = "blocked"
+    
+    await callback_query.answer("🎁 Раздача товаров начата.\n⏳Каждую минуту вы будете получать свой доход.")
+    pop_t = True
+    asyncio.create_task(start_population_activate(chat_id, user_id))
+    
+@r.callback_query(F.data == "stop_population")
+async def stop_population(callback_query: types.CallbackQuery):
+    global pop_t
+    await callback_query.answer("🛑 Раздача товаров остановлена.")
+    pop_t = False
+    user_id = callback_query.from_user.id
+    
+    if user_id not in user_states2 or user_states2[user_id] != "blocked":
+        await callback_query.answer("Раздача товаров не была запущена.")
+        return
+    user_states2[user_id] = "unblocked"
+    
+# endregion
+    
+# region guest methods
+
+@r.message(Command("help"))
+async def help(message: Message):
+    await message.reply("📜 Список доступных команд:\n"
+                        "/start - 🏁 Начать игру\n"
+                        "/register - 📝 Зарегистрироваться\n"
+                        "/invest - 💰 Инвестировать деньги в экономику\n"
+                        "/countries - 🌎 Список стран\n"
+                        "Копать - ⛏ Заработать денег\n"
+                        "/info - ℹ Информация о вас\n"
+                        "/country_info - 🌍 Информация о вашей стране\n"
+                        "/help - ❓ Помощь", reply_markup=keyboard_start)
+    
+@r.message(F.photo)
+async def get_photo(message: Message):
+    await message.answer(f"ID фота: {message.photo[-1].file_id}")
+    
+@r.message(Command("map"))
+async def show_map(message: Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Открыть карту", web_app=WebAppInfo(url="https://www.flickr.com/photos/202286975@N06/54326715216/in/dateposted-public/"))]
+        ]
+    )
+    
+    await message.answer("Нажми кнопку, чтобы открыть карту:", reply_markup=keyboard)
+    
+@r.message(F.text.startswith('дать'))
+async def give_currency(message: Message):
+    if not message.reply_to_message:
+        await message.reply("Вы должны ответить на сообщение пользователя, чтобы передать валюту.")
+        return
+
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.reply("Вы должны указать сумму. Пример: дать 100")
+            return
+        
+        amount = int(parts[1])
+
+        if amount <= 0:
+            await message.reply("Сумма должна быть положительной.")
+            return
+
+    except ValueError:
+        await message.reply("Некорректная сумма. Пример: дать 100")
+        return
+
+    from_user_id = message.from_user.id
+    to_user_id = message.reply_to_message.from_user.id
+
+
+    cursor.execute(F"SELECT money FROM users WHERE user_id = {message.from_user.id}")
+    c = cursor.fetchone()
+    money = c[0]
+    if money < amount:
+        await message.reply("У вас недостаточно средств.")
+    
+@r.message(Command("list_economy"))
+async def show_tierlist(message: types.Message):
+    cursor.execute("SELECT name, economy FROM countries ORDER BY economy DESC")
+    economy_list = cursor.fetchall()
+
+    if not economy_list:
+        await message.answer("⚠ Данные отсутствуют.")
+        return
+
+    tier_list = "\n".join([f"🏆 {i+1}. {name} - {economy}💰" for i, (name, economy) in enumerate(economy_list)])
+
+    await message.answer(f"📊 **Тир-лист экономики**:\n{tier_list}")
+
+@r.message(Command("list_population"))
+async def list_population(message: Message):
+    """ Команда для вывода тир-листа стран по населению """
+    tier_list = get_population_tier_list()
+    await message.answer(tier_list)
+    
+# endregion 
+
 # region Army
+
+@r.message(F.text.lower() == 'сражаться')
+async def battle(message: Message):
+    """ Логика сражения между двумя пользователями """
+    if not message.reply_to_message:
+        await message.answer("⚔️ **Сражение возможно только в ответ на сообщение соперника!**")
+        return
+
+    user_1_id, user_2_id = message.from_user.id, message.reply_to_message.from_user.id
+
+    # Проверяем, находятся ли они в войне и не в перемирии
+    if not check_war_status(user_1_id, user_2_id):
+        await message.answer("❌ **Вы не находитесь в войне или у вас перемирие!**")
+        return
+
+    army_1, army_2 = get_army(user_1_id), get_army(user_2_id)
+
+    if not army_1 or not army_2:
+        await message.answer("❌ **Не удалось найти армию одного из пользователей.**")
+        return
+
+    strength_1, strength_2 = calculate_army_strength(army_1), calculate_army_strength(army_2)
+
+    # Если у первой армии не хватает солдат → сразу проигрыш
+    if strength_1 is None:
+        await message.answer(f"⚠ **{message.from_user.username} проиграл! Недостаточно солдат для управления техникой.** ❌")
+        update_army(user_1_id, army_1['soldiers'] // 2, army_1['cars'] // 2, army_1['tanks'] // 2)
+        return
+    
+    # Если у второй армии не хватает солдат → сразу проигрыш
+    if strength_2 is None:
+        await message.answer(f"⚠ **{message.reply_to_message.from_user.username} проиграл! Недостаточно солдат для управления техникой.** ❌")
+        update_army(user_2_id, army_2['soldiers'] // 2, army_2['cars'] // 2, army_2['tanks'] // 2)
+        return
+
+    # Победа первой армии
+    if strength_1 > strength_2:
+        result_message = f"🏆 **Победитель:** {message.from_user.username}!\n💥 **Сила армии:** {strength_1} vs {strength_2}"
+        
+        # Уменьшаем армию победителя на 20% от проигравшего
+        update_army(
+            user_1_id,
+            army_1['soldiers'] - int(army_2['soldiers'] * 0.2),
+            army_1['cars'] - int(army_2['cars'] * 0.2),
+            army_1['tanks'] - int(army_2['tanks'] * 0.2)
+        )
+        
+        # Проигравший теряет 90%
+        update_army(
+            user_2_id,
+            int(army_2['soldiers'] * 0.1),
+            int(army_2['cars'] * 0.1),
+            int(army_2['tanks'] * 0.1)
+        )
+
+    # Победа второй армии
+    elif strength_1 < strength_2:
+        result_message = f"🏆 **Победитель:** {message.reply_to_message.from_user.username}!\n💥 **Сила армии:** {strength_2} vs {strength_1}"
+        
+        # Уменьшаем армию победителя на 20% от проигравшего
+        update_army(
+            user_2_id,
+            army_2['soldiers'] - int(army_1['soldiers'] * 0.2),
+            army_2['cars'] - int(army_1['cars'] * 0.2),
+            army_2['tanks'] - int(army_1['tanks'] * 0.2)
+        )
+        
+        # Проигравший теряет 90%
+        update_army(
+            user_1_id,
+            int(army_1['soldiers'] * 0.1),
+            int(army_1['cars'] * 0.1),
+            int(army_1['tanks'] * 0.1)
+        )
+
+    # Ничья → обе армии теряют от 10% до 15%
+    else:
+        percent_1 = random.randint(10, 15) / 100
+        percent_2 = random.randint(10, 15) / 100
+        result_message = f"⚔ **Ничья!** Обе армии потеряли силы.\n💪 Сила армии: {strength_1} vs {strength_2}"
+
+        update_army(
+            user_1_id,
+            int(army_1['soldiers'] * (1 - percent_1)),
+            int(army_1['cars'] * (1 - percent_1)),
+            int(army_1['tanks'] * (1 - percent_1))
+        )
+
+        update_army(
+            user_2_id,
+            int(army_2['soldiers'] * (1 - percent_2)),
+            int(army_2['cars'] * (1 - percent_2)),
+            int(army_2['tanks'] * (1 - percent_2))
+        )
+
+    await message.answer(result_message)
 
 @r.message(F.text.in_({'Армия','армия','Army'}))
 async def army(message: Message):
@@ -631,7 +813,7 @@ async def army(message: Message):
 
 @r.message(Command("army_peace"))
 async def army_peace_help(message: Message):
-    await message.answer("Команды для отношении:\nОбьявить войну - надо ответить на сообщение собеседника\nОбьявить перемирие - надо ответить на сообщение собеседника и быть в войне с ним", reply_markup=keyboard_army_peace)
+    await message.answer("Команды для отношении:\nОбьявить войну - надо ответить на сообщение собеседника\nОбьявить перемирие - надо ответить на сообщение собеседника и быть в войне с ним\nсражаться - надо ответить на сообщение быть в состояние войны также быть в нужной тактике и иметь превосходство либо подобрать тактику которую вы будете использовать чтоб победить в сражении", reply_markup=keyboard_army_peace)
 
 @r.callback_query(F.data == 'sol')
 async def add_soldiers(callback: CallbackQuery):
@@ -960,6 +1142,31 @@ async def create_country(message: Message):
         conn.commit()
     except ValueError as ve:
         await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
+        
+@r.message(Command("update_country"))
+async def update_country(message: Message):
+    try:
+        args = message.text.split()
+        if len(args)!= 7:
+            raise ValueError("Неверный формат команды. Используйте: /update_country <название страны> <столица> <экономика> <население> <счастье> <темп роста>")
+        chek_is_country = await get_country_params(args[1])
+        if chek_is_country is None:
+            await message.answer("Страна не найдена!")
+            return
+
+        name = args[1]
+        capital = args[2]
+        economy = args[3]
+        population = args[4]
+        happiness = args[5]
+        temp_rost = args[6]
+
+        cursor.execute("UPDATE countries SET capital =?, economy =?, population =?, happiness =?, temp_rost =? WHERE name =?", (capital, economy, population, happiness, temp_rost, name))
+        conn.commit()
+        await message.reply(f"Изменения в стране '{name}' успешно сохранены.", reply_markup=keyboard_admin)
+    except Exception as e:
+        await message.reply(f"Ошибка: {e}")
+        conn.rollback()
         
 @r.message(Command('ban_admin'))
 async def ban_admin(message: Message, state:FSMContext):
