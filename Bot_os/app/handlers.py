@@ -1,6 +1,6 @@
 # region imports
 
-import sqlite3, random, time, asyncio, logging, math
+import sqlite3, random, time, asyncio, logging, math, string
 from aiogram import F, Router
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery, BotCommand, WebAppInfo
 from aiogram.filters import Command
@@ -32,6 +32,7 @@ user_states = {}
 user_states2 = {}
 party_state = {}
 party_t = False
+captcha = None
 
 # endregion
 
@@ -48,10 +49,22 @@ class BroadcastForm(StatesGroup):
     
 class Investigate(StatesGroup):
     num = State()
+    
+class Logout(StatesGroup):
+    captcha = State()
+    
+class Ban(StatesGroup):
+    id = State()
 
 # endregion
 
 # region Need methods
+
+async def generate_captcha():
+    letters = ''.join(random.choices(string.ascii_uppercase, k=2))  # Две случайные буквы (заглавные)
+    numbers = ''.join(random.choices(string.digits, k=2))  # Две случайные цифры
+    captcha = letters + numbers
+    return captcha
 
 async def set_happy_max(country):
     cursor.execute("UPDATE countries SET happiness = 100 WHERE name = ?", country)
@@ -245,8 +258,20 @@ async def chek_is_admin(user_id):
     
 async def ban_user(user_id, admin_id):
     try:
-        cursor.execute("DELETE FROM admins WHERE user_id =?", (user_id,))
-        logging.info(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
+        cursor.execute("DELETE FROM users WHERE user_id =?", (user_id,))
+        is_admin = await chek_is_admin(user_id)
+        if is_admin == True:
+            cursor.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
+            logging.warning(f"Админ с ID: {user_id}, был забанен админом с ID: {admin_id}")
+            if admin != user_id:
+                await bot.send_message(user_id, "Ваша админка была снята!")
+            if admin == user_id:
+                await bot.send_message(admin_id, "Вы успешно вышли из админского аккаунта")
+        logging.warning(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
+        if user_id != admin_id:
+            await bot.send_message(user_id, "Вы были забанены! админом")
+        if user_id == admin_id:
+            await bot.send_message(user_id, "Вы успешно вышли из аккаунта!")
     except BaseException as e:
         await bot.send_message(chat_id=admin, text="🚨Ошибка: " + str(e))
         return False
@@ -606,6 +631,27 @@ async def stop_population(callback_query: types.CallbackQuery):
 # endregion
     
 # region guest methods
+
+@r.message(Command("unlogin"))
+async def logout_account(message: Message, state: FSMContext):
+    global captcha
+    captcha = await generate_captcha()
+    await message.answer(f"Введите капчу для подтверждения выхода:\nкод: {captcha}\n🚫Отмена - отмена")
+    await state.set_state(Logout.captcha)
+    
+@r.message(Logout.captcha)
+async def check_captcha(message: Message, state: FSMContext):
+    global captcha
+    if message.text.lower() == captcha.lower():
+        user_id = message.from_user.id
+        await state.clear()
+        await message.answer("Выход из аккаунта успешно завершен.")
+        await ban_user(user_id, user_id)
+    elif message.text.lower() == "отмена":
+        await state.clear()
+        await message.answer("Выход отменен.")
+    else:
+        await message.answer("Неправильный код. Попробуйте еще раз./unlogin")
 
 @r.message(Command("help"))
 async def help(message: Message):
@@ -1018,13 +1064,18 @@ async def ban_user_message(message: Message):
     args = message.text.split()
     if len(args)!= 2:
         await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'", reply_markup=keyboard_admin)
-        return
+        await ban_user_reply(message, message.from_user.id)
     user_id = int(args[1])
     if user_id == admin:
         logging.info(F"Пользователь с ID: {message.from_user.id} пытался забанить разработчика!")
         return
     await ban_user(user_id, message.from_user.id)
     await message.reply(F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
+    
+async def ban_user_reply(message, user_id):
+    if message.reply_to_message:
+        ban_user = message.reply_to_message.from_user.id
+        await ban_user(ban_user, user_id)
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
@@ -1171,13 +1222,18 @@ async def update_country(message: Message):
 @r.message(Command('ban_admin'))
 async def ban_admin(message: Message, state:FSMContext):
     if message.from_user.id == admin:
-        await message.answer("Введите ID админа для удаления🪪:")
+        await message.answer("Введите ID админа для удаления🪪:\nОтмена - отмена")
         await state.set_state(Ban.id)
     else:
         await message.reply("У вас не доступа!❌")
 
     @r.message(Ban.id)
     async def ban_admin_True(message: Message, state: FSMContext):
+        if message.text.lower() == "отмена":
+            await message.reply("Удаление отменено!")
+            await state.clear()
+            return
+        
         cursor.execute(f"SELECT user_id FROM admins WHERE user_id = {message.text}")
         a = cursor.fetchone()
         adma = a[0]
