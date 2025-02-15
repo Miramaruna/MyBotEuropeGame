@@ -1076,6 +1076,9 @@ async def ban_user_reply(message, user_id):
     if message.reply_to_message:
         ban_user = message.reply_to_message.from_user.id
         await ban_user(ban_user, user_id)
+        await bot.send_message(user_id, F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
+        logging.info(f"Пользователь с ID: {ban_user} забанен пользователем с ID: {user_id}")
+    return
     
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
