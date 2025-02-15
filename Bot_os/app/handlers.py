@@ -270,6 +270,19 @@ async def show_map(message: Message):
     
     await message.answer("Нажми кнопку, чтобы открыть карту:", reply_markup=keyboard)
     
+@r.message(Command("list_economy"))
+async def show_tierlist(message: types.Message):
+    cursor.execute("SELECT name, economy FROM countries ORDER BY economy DESC")
+    economy_list = cursor.fetchall()
+
+    if not economy_list:
+        await message.answer("⚠ Данные отсутствуют.")
+        return
+
+    tier_list = "\n".join([f"🏆 {i+1}. {name} - {economy}💰" for i, (name, economy) in enumerate(economy_list)])
+
+    await message.answer(f"📊 **Тир-лист экономики**:\n{tier_list}")
+    
 # endregion 
     
 # region Need methods
@@ -496,10 +509,8 @@ async def broadcast_message(message_text):
         try:
             await bot.send_message(chat_id=user_id, text=str(message_text))
         except TelegramForbiddenError:
-            # Log the error or handle it as needed
             print(f"Cannot send message to user {user_id}: This user is a bot")
-        except Exception as e:
-            # Handle other potential errors
+        except Exception as e:  
             print(f"Error sending message to user {user_id}: {str(e)}")
             
 async def get_all_country_params():
@@ -618,9 +629,9 @@ async def army(message: Message):
         else:
             await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖\nМашины - {cars}🛻\nТанки - {tanks}💥\nБаллы - {balls}\nДля познания команд отношении введите - /army_peace", reply_markup=armmy_kb)
 
-@r.message(Command("/army_peace"))
+@r.message(Command("army_peace"))
 async def army_peace_help(message: Message):
-    await message.answer("Команды для отношении", reply_markup=keyboard_army_peace)
+    await message.answer("Команды для отношении:\nОбьявить войну - надо ответить на сообщение собеседника\nОбьявить перемирие - надо ответить на сообщение собеседника и быть в войне с ним", reply_markup=keyboard_army_peace)
 
 @r.callback_query(F.data == 'sol')
 async def add_soldiers(callback: CallbackQuery):

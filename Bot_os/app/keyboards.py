@@ -5,8 +5,8 @@ button_start = [
     [KeyboardButton(text="/country_info"), KeyboardButton(text="/countries")],
     [KeyboardButton(text="/start"), KeyboardButton(text="/info_bot")], 
     [KeyboardButton(text="/help"), KeyboardButton(text="/admin")],
-    [KeyboardButton(text="/map"), KeyboardButton(text="Копать")],
-    [KeyboardButton(text="Армия")]
+    [KeyboardButton(text="/map"),KeyboardButton(text='/list_economy')],
+    [KeyboardButton(text="Армия"), KeyboardButton(text="Копать")]
 ]
 
 keyboard_start = ReplyKeyboardMarkup(keyboard=button_start, resize_keyboard=True, row_width=2)
