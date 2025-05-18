@@ -14,6 +14,9 @@ from config import TOKEN
 from app.handlers import *
 from app.keyboards import *
 from app.DB import *
+from app.imports import *
+from app.methods import *
+from app.states import *
 
 if not TOKEN:
     raise ValueError("🚨 TOKEN environment variable is not set")
@@ -32,10 +35,6 @@ admin2 = 45
 
 # region start
 
-class Registration(StatesGroup):
-    name = State()
-    country = State()
-
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     await message.answer("👋 Привет! Добро пожаловать в игру. Используй /register, чтобы зарегистрироваться.\n/help - для помощи", reply_markup=keyboard_start)
@@ -51,9 +50,14 @@ async def process_name(message: types.Message, state: FSMContext):
         user = await chek_is_user(message.from_user.id)
     except Exception as e:
         logging.info(F"📌 Регистрация пользователя с ID: {message.from_user.id}")
+        
+    if message.text.startswith("/"):
+        await message.answer("❌Недопустимый символ. Используйте только буквы.")
+        await state.clear()
+        return
     
     if user == False:
-        if message.text == "Отмена" or message.text == "отмена":
+        if message.text.lower() == "отмена":
             await state.clear()
             return
         await state.update_data(name=message.text)
@@ -75,10 +79,9 @@ async def choose_country(message: types.Message):
     else:
         await message.answer("⚠ Список стран пуст. Обратитесь к администратору.")
 
-
 @dp.message(Registration.country)
 async def process_country(message: types.Message, state: FSMContext):
-    if message.text == "Отмена" or message.text == "отмена":
+    if message.text.lower() == "отмена":
         await state.clear()
         return
     country = message.text
@@ -86,12 +89,24 @@ async def process_country(message: types.Message, state: FSMContext):
     if cursor.fetchone():
         user_data = await state.get_data()
         user_id = message.from_user.id
-        name = user_data['name']
-        cursor.execute("""
-            INSERT INTO users (user_id, name, country, role)
-            VALUES (?, ?, ?, ?)
-        """, (user_id, name, country, "🏛 Президент"))
-        await message.answer(f"🎉 Вы выбрали {country}! Теперь вы Президент этой страны! 🏛")
+        cursor.execute('SELECT country FROM users WHERE country=?', (country,))
+        is_country = cursor.fetchone()
+        if is_country is None:
+            name = user_data['name']
+            cursor.execute("""
+                INSERT INTO users (user_id, name, country, role)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, name, country, "🏛 Президент"))
+            conn.commit()
+            await message.answer(f"🎉 Вы выбрали {country}! Теперь вы Президент этой страны! 🏛")
+        else:
+            name = user_data['name']
+            cursor.execute("""
+                INSERT INTO users (user_id, name, country, role)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, name, country, "👤 Житель"))
+            conn.commit()
+            await message.answer(f"🎉 Вы выбрали {country}! Теперь вы Житель этой страны! 👤")
         logging.info(F"✅ Был зарегистрирован новый пользователь с ID:{message.from_user.id}")
         await state.clear()
     else:
@@ -107,32 +122,49 @@ async def show_info(message: types.Message):
     if is_user == False:
         await message.reply("⚠ Вы не зарегистрированы. Используйте /register")
         return
-    user = await get_user_params(user)
-    cursor.execute("SELECT * FROM wars WHERE country1 = ? OR country2 = ?", (user[0], user[0]))
+    user_params = await get_user_params(user)
+    cursor.execute("SELECT * FROM wars WHERE country1 = ? OR country2 = ?", (message.from_user.id, message.from_user.id))
     wars = cursor.fetchone()
+    if wars != None:
+        country1_name = await get_country_from_users(user)
+        country2_name = await get_country_from_users(wars[2])    
     
-    if user:
-        name, country, role, money = user
+    if user_params:
+        name, country, role, money = user_params
         await message.answer(f"🆔 Имя: {name}\n🌍 Страна: {country}\n🏅 Роль: {role}\n💵 Деньги : {money}", reply_markup=keyboard_start)
     else:
         await message.answer("⚠ Вы не зарегистрированы")
     if wars:
-        country1, country2, result = wars
-        await message.answer(f"⚔️ Сражения:\n️ 🏳️ Страна 1: {country1}\n️ 🏳️ Страна 2: {country2}\n🏁 Результат: {result}", reply_markup=keyboard_start)
+        id, country1, country2, result = wars
+        await message.answer(f"⚔️ Сражения:\n️ 🏳️ Страна 1: {country1_name}\n️ 🏳️ Страна 2: {country2_name}\n🏁 Результат: {result}", reply_markup=keyboard_start)
     else:
         await message.answer("⚔️У вас нет ни одного сражения.")
         
 @dp.message(Command("country_info"))
 async def show_country_info(message: types.Message):
-    user_id = message.from_user.id  # Инициализация user_id
+    user_id = message.from_user.id
     is_user = await chek_is_user(user_id)
-    user = await get_user_params(user_id)
     if is_user:
-        country = await get_country_from_users(user_id)
-        country = await get_country_params(user[1])  # Передаём user_id
+        country_name = await get_country_from_users(user_id)
+        country = await get_country_params(country=country_name)
         if country:
-            capital, economy, population, happiness, temp_rost, *rest = country  # Извлечение первых трех значений, остальные игнорируются
-            await message.answer(f"🌍 Информация о стране {user[1]}:\n🏛 Столица: {capital}\n💰 Экономика: {economy}\n👥 Население: {population}\n😊 Счастье: {happiness}\n📈 Темп роста: {temp_rost}%", reply_markup=keyboard_countries_methods)
+            name, capital, economy, population, happiness, temp_rost, *rest = country
+
+            # Приводим к float и форматируем до двух знаков после запятой
+            economy = f"{float(economy):.2f}"
+            population = f"{float(population):.2f}"
+            happiness = f"{float(happiness):.2f}"
+            temp_rost = f"{float(temp_rost):.2f}"
+
+            await message.answer(
+                f"🌍 Информация о стране {name}:\n"
+                f"🏛 Столица: {capital}\n"
+                f"💰 Экономика: {economy}\n"
+                f"👥 Население: {population}\n"
+                f"😊 Счастье: {happiness}\n"
+                f"📈 Темп роста: {temp_rost}%",
+                reply_markup=keyboard_countries_methods
+            )
         else:
             await message.answer("⚠ Информация о вашей стране отсутствует.")
     else:
@@ -140,7 +172,7 @@ async def show_country_info(message: types.Message):
         
 @dp.message(Command("info_bot"))
 async def show_info_bot(message: Message):
-    await message.answer("🤖 Информация о боте:\n⚙️ Версия: 1.1.0\n🐍 Язык: Python\n💾 База данных: Sqlite3\n🕹 Разработчик: Miramar\n🔗 Github: https://github.com/Miramaruna/MyBotEuropeGame", reply_markup=keyboard_start)
+    await message.answer("🤖 Информация о боте:\n⚙️ Версия: 1.1.5\n🐍 Язык: Python\n💾 База данных: Sqlite3\n🕹 Разработчик: Miramar\n🔗 Github: https://github.com/Miramaruna/MyBotEuropeGame", reply_markup=keyboard_start)
     
 # endregion
 

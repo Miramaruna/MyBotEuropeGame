@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from app.imports import *
 
 button_start = [
     [KeyboardButton(text="/start")],
@@ -26,8 +26,9 @@ keyboard_countries_methods = InlineKeyboardMarkup(inline_keyboard=button_countri
 
 button_admin = [
     [KeyboardButton(text="/admin"), KeyboardButton(text="/ban"), KeyboardButton(text="/mailing")],
-    [KeyboardButton(text="update_country")],
+    [KeyboardButton(text="/update_country")],
     [KeyboardButton(text="/register_admin"), KeyboardButton(text="/ban_admin")],
+    [KeyboardButton(text="/get_admin")],
     [KeyboardButton(text="/get_country"), KeyboardButton(text="/get_users")],
     [KeyboardButton(text="/delete_country"), KeyboardButton(text="/create_country")],
     [KeyboardButton(text="/help"), KeyboardButton(text="/start"), KeyboardButton(text="/info_bot")],
@@ -38,9 +39,17 @@ keyboard_admin = ReplyKeyboardMarkup(keyboard=button_admin, resize_keyboard=True
 
 ar = [
     [InlineKeyboardButton(text='Ad. Soldiers', callback_data='sol'), InlineKeyboardButton(text='Ad. Cars', callback_data='car')],
-    [InlineKeyboardButton(text='Ad. Tanks', callback_data='tan')]
+    [InlineKeyboardButton(text='Ad. Tanks', callback_data='tan')],
+    [InlineKeyboardButton(text='Повысить готовность', callback_data='ad_ready')],
+    [InlineKeyboardButton(text='Тактика', callback_data='tactics')]
 ]
 armmy_kb = InlineKeyboardMarkup(inline_keyboard=ar)
+
+edit_tacticK = [
+    [InlineKeyboardButton(text="Тактика Защита", callback_data='tactics_defend')],
+    [InlineKeyboardButton(text="Тактика Атака", callback_data='tactics_attack')]
+]
+edit_tactic_kb = InlineKeyboardMarkup(inline_keyboard=edit_tacticK)
 
 button_army_peace = [
     [KeyboardButton(text='обьявить войну'), KeyboardButton(text='обьявить перемирие')],

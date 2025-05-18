@@ -1,148 +1,82 @@
-# region imports
-
-import sqlite3, random, time, asyncio, logging, math, string
-from aiogram import F, Router
-from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery, BotCommand, WebAppInfo
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import ChatMemberUpdatedFilter
-from aiogram import types
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ContentType, ChatMemberUpdated
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramForbiddenError
-from aiogram.types import FSInputFile
-from app.keyboards import *
-from app.DB import *
+from app.imports import *
+from app.states import *
+from app.config import *
+from app.methods import *
 from bot import *
-from config import *
 
-# endregion
+# region​‌‌‍ ⁡⁢⁢⁣Need methods⁡​
 
-# region config
-r = Router()
-fm_t = False
-Pop_t = False
-chat_id = None
-admin = 5626265763 
-kol_kop = None
-user_states = {}
-user_states2 = {}
-party_state = {}
-party_t = False
-captcha = None
+async def while_transfer_ready_army(user_id, ready, call):
+    global ready_army
+    while ready_army:
+        is_ready = await chek_is_ready(user_id)
+        if is_ready is True:
+            try:
+                cursor.execute(
+                    "UPDATE army SET ready = ready + ? WHERE user_id = ?",
+                    (int(ready), int(user_id))
+                )
+                await call.bot.send_message(user_id, "🔝Ваша готовность армии увеличилось на 1")
+                conn.commit()
+                # print(F"Commited: ready:{ready}, user_id:{user_id}")
+            except Exception as e:
+                print(f"[ERROR]:update ready: {e}")
+        elif is_ready is False:
+            cursor.execute("UPDATE army SET ready = 100 WHERE user_id = ?", (int(user_id),))
+            await call.bot.send_message(user_id, "🪖Ваша готовность уже состовляет 100!")
+            army_ready_state[user_id] = "unblocked"
+            ready_army = False
+            conn.commit()
+        elif is_ready == "error":
+            army_ready_state[user_id] = "unblocked"
+            ready_army = False
+            print("Error in transfer_ready_army")
+            
+        sleepfor = random.randint(20, 40)
+        await asyncio.sleep(sleepfor)
 
-# endregion
-
-# region States
-
-class Party(StatesGroup):
-    amount = State()
-    
-class RegisterAdmin(StatesGroup):
-    password = State()
-    
-class BroadcastForm(StatesGroup):
-    waiting_for_message = State()
-    
-class Investigate(StatesGroup):
-    num = State()
-    
-class Logout(StatesGroup):
-    captcha = State()
-    
-class Ban(StatesGroup):
-    id = State()
-
-# endregion
-
-# region Need methods
-
-async def generate_captcha():
-    letters = ''.join(random.choices(string.ascii_uppercase, k=2))  # Две случайные буквы (заглавные)
-    numbers = ''.join(random.choices(string.digits, k=2))  # Две случайные цифры
-    captcha = letters + numbers
-    return captcha
-
-async def set_happy_max(country):
-    cursor.execute("UPDATE countries SET happiness = 100 WHERE name = ?", country)
-    conn.commit()
-    return
-
-async def start_party_activate(chat_id, user_id, country, money):
-    global party_t
-    numOfParty = 0
-    numOfParty += 1
-    params = await get_country_params(country)
-    happiness_min = math.ceil(money / 2000)
-    happiness_max = math.ceil(money / 500)
-    party_t = True
-    await transfer_happiness(30, country, False)
-    
-    if numOfParty >= 8:
-        await bot.send_message(chat_id=chat_id, text="Праздник закончился!")
-        party_t = False
-        party_state[user_id] = "unblocked"
-        return
-    
-    if params[3] >= 100:
-            await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
-            party_t = False
-            party_state[user_id] = "unblocked"
-            await set_happy_max(country)
-            return
-
-    while party_t:
-        current_happiness = await get_country_params(country)
-        
-        if current_happiness[3] >= 100:
-            await bot.send_message(chat_id=chat_id, text="🎉 Счастье достигло 100! Праздник завершен.")
-            party_t = False
-            party_state[user_id] = "unblocked"
-            await set_happy_max(country)
-            break
-
-        happiness = random.randint(happiness_min, happiness_max)
-
-        await bot.send_message(chat_id=chat_id, text=f"📈 Счастье увеличилось на {happiness}.")
-        await transfer_happiness(happiness, country, True)  # Обновляем значение в БД
-        await asyncio.sleep(5)
-
-async def invest_task(country, money, chat_id):
-    Invest = True
-    numOfInvest = 0
-    economy_min = money // 10
-    economy_max = money // 5
-    while Invest:
-        numOfInvest += 1
-        economy = random.randint(economy_min, economy_max)
-        if numOfInvest == 6:
-            Invest = False
-            break
-        try:
-            cursor.execute("UPDATE countries SET economy = economy + ? WHERE name = ?", (economy, country))
-            await bot.send_message(chat_id=chat_id, text=f"✅ Было получено {economy} единиц экономики вашей страны.")
-        except BaseException as e:
-            await bot.send_message(chat_id=chat_id, text="🚨 Ошибка: " + str(e))
-            Invest = False
-            break
-        await asyncio.sleep(20)
-
-async def start_production_activate(chat_id, user_id):
+async def start_population_activate(chat_id, user_id):
     global pop_t
+    # print(pop_t)
+    while pop_t:
+        country = await get_country_from_users(user_id)
+        params = await get_country_params(country)
+        economy = params[2] // 100000
+        population_max = (params[3] // 50) + (params[4] // 5) * (params[5] // 40) + economy
+        population_min = (params[3] // 100) + (params[4] // 15) * (params[5] // 40) + economy
+        if population_max >= 9000:
+            population_max = POPULATION_MAX
+        if population_min >= 5000:
+            population_min = POPULATION_MIN
+        population = random.randint(population_min, population_max)
+        # print(f"Population Before: {population}")
+        population_bonus = params[6]
+        population_bonus_amount = population * population_bonus
+        population += population_bonus_amount
+        # print(f"Popualtion after bonus:{population}")
+        
+        if population <= 0:
+            print(population)
+            population = random.randint(1, 2)
+            # print("start min popualtion")
+        await transfer_population(population, country, True)
+        await bot.send_message(chat_id=chat_id, text=f"👩‍🍼 Было рождено {population} людей из страны {country}.")
+        
+        sleepfor = random.randint(20, 40)
+        await asyncio.sleep(sleepfor)
+        
+async def start_production_activate(chat_id, user_id):
 
     # Вычисления для максимальных и минимальных доходов
     def calculate_income_params(params):
-        economy_max = params[1] // 45
-        population_max = params[2] // 30
-        happiness_max = params[3] // 24
+        economy_max = params[2] // 45
+        population_max = params[3] // 30
+        happiness_max = params[4] // 24
         income_max = economy_max + population_max * happiness_max
 
-        econome_min = params[1] // 80
-        population_min = params[2] // 50
-        happiness_min = params[3] // 48
+        econome_min = params[2] // 80
+        population_min = params[3] // 50
+        happiness_min = params[4] // 48
         income_min = econome_min + population_min * happiness_min
 
         return income_min, income_max
@@ -159,296 +93,111 @@ async def start_production_activate(chat_id, user_id):
             continue
 
         income_min, income_max = calculate_income_params(params)
+        if income_max >= PRODUCTION_MAX:
+            income_max = PRODUCTION_MAX
         income = random.randint(income_min, income_max)
         
         await transfer_money(income, user_id, True)
         await bot.send_message(chat_id=chat_id, text=f"💰 Было получено {income} монет из страны {country}.")
-        await asyncio.sleep(5)
-
-async def start_population_activate(chat_id, user_id):
-    global pop_t
-    while pop_t:
-        country = await get_country_from_users(user_id)
-        params = await get_country_params(country)
-        population_max = params[2] // 50 + params[4] // 5
-        population_min = params[2] // 100 + params[4] // 15
-        population = random.randint(population_min, population_max)
         
-        await transfer_population(population, country, True)
-        await bot.send_message(chat_id=chat_id, text=f"👩‍🍼 Было рождено {population} людей из страны {country}.")
-        await asyncio.sleep(5)
+        sleepfor = random.randint(20, 40)
+        await asyncio.sleep(sleepfor)
 
-async def add_admin(user_id):
-    try:
-        cursor.execute("INSERT INTO admins (user_id) VALUES (?)", (user_id,))
-    except BaseException as e:
-        await bot.send_message(chat_id=admin, text="❗️Ошибка: " + str(e))
-        return False
-    conn.commit()
-    return True
-
-async def transfer_population(population, country, is_positive):
-    try:
-        if is_positive:
-            cursor.execute("UPDATE countries SET population = population + ? WHERE name =?", (population, country))
-        else:
-            cursor.execute("UPDATE countries SET population = population - ? WHERE name =?", (population, country))
-    except BaseException as e:
-        await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
-        return False
-    conn.commit()
-    return True
-
-async def transfer_happiness(happiness, country, is_positive):
-    try:
-        if is_positive:
-            cursor.execute("UPDATE countries SET happiness = happiness + ? WHERE name =?", (happiness, country))
-        else:
-            cursor.execute("UPDATE countries SET happiness = happiness - ? WHERE name =?", (happiness, country))
-    except BaseException as e:
-        await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
-        return False
-    conn.commit()
-    return True
-
-async def transfer_money(money, user_id, is_positive):
-    try:
-        if is_positive == True:
-            cursor.execute("UPDATE users SET money = money + ? WHERE user_id =?", (money, user_id))
-        else:
-            cursor.execute("UPDATE users SET money = money - ? WHERE user_id =?", (money, user_id))
-    except BaseException as e:
-        await bot.send_message(chat_id=admin, text="🚨 Ошибка: " + str(e))
-        return False
-    conn.commit()
-    return True
-    
-async def chek_is_user(user_id):
-    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    if user:
-        return True
-    else:
-        return False
-    
-async def get_money(user_id):
-    cursor.execute("SELECT money FROM users WHERE user_id = ?", (user_id,))
-    money = cursor.fetchone()
-    return money[0]
-    
-async def get_country_from_users(user_id):
-    cursor.execute("SELECT country FROM users WHERE user_id = ?", (user_id,))
-    country = cursor.fetchone()
-    return country[0]
-
-async def get_country_params(country):
-    cursor.execute("SELECT capital, economy, population, happiness, temp_rost FROM countries WHERE name = ?", (country,))
-    country_params = cursor.fetchone()
-    return country_params
-
-async def chek_is_admin(user_id):
-    cursor.execute("SELECT user_id FROM admins WHERE user_id = ?", (user_id,))
-    admin = cursor.fetchone()
-    if admin is None:
-       return  False
-    elif admin is not None:
-        return True
-    else:
-        return False
-    
-async def ban_user(user_id, admin_id):
-    try:
-        cursor.execute("DELETE FROM users WHERE user_id =?", (user_id,))
-        is_admin = await chek_is_admin(user_id)
-        if is_admin == True:
-            cursor.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
-            logging.warning(f"Админ с ID: {user_id}, был забанен админом с ID: {admin_id}")
-            if admin != user_id:
-                await bot.send_message(user_id, "Ваша админка была снята!")
-            if admin == user_id:
-                await bot.send_message(admin_id, "Вы успешно вышли из админского аккаунта")
-        logging.warning(f"Пользователь с ID: {user_id} был забанен админом с ID: {admin_id}")
-        if user_id != admin_id:
-            await bot.send_message(user_id, "Вы были забанены! админом")
-        if user_id == admin_id:
-            await bot.send_message(user_id, "Вы успешно вышли из аккаунта!")
-    except BaseException as e:
-        await bot.send_message(chat_id=admin, text="🚨Ошибка: " + str(e))
-        return False
-    conn.commit()
-    return True
-            
-async def get_all_users():
-    cursor.execute("SELECT user_id, name, country, role, money FROM users")
-    users = cursor.fetchall()
-    return users
-
-async def get_all_users_id():
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
-    return [user[0] for user in users]
-
-async def get_user_params(user_id):
-    cursor.execute("SELECT name, country, role, money FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    return user
-
-async def broadcast_message(message_text):
-    users = await get_all_users()  # Assuming you have a function to get all user IDs
-    for user in users:
-        user_id = user[0]
+async def invest_task(country, money, chat_id):
+    Invest = True
+    numOfInvest = 0
+    economy_min = money // 20
+    economy_max = money // 10
+    economy_bonus_get = await get_country_params(country=country)
+    economy_bonus = economy_bonus_get[7]
+    while Invest:
+        numOfInvest += 1
+        economy = random.randint(economy_min, economy_max)
+        economy_bonus_amount = economy * economy_bonus
+        economy += economy_bonus_amount
+        if numOfInvest == 6:
+            Invest = False
+            break
         try:
-            await bot.send_message(chat_id=user_id, text=str(message_text))
-        except TelegramForbiddenError:
-            print(f"Cannot send message to user {user_id}: This user is a bot")
-        except Exception as e:  
-            print(f"Error sending message to user {user_id}: {str(e)}")
-            
-async def get_all_country_params():
-    cursor.execute("SELECT capital, name, economy, population, happiness, temp_rost FROM countries")
-    countries = cursor.fetchall()
-    return countries
-
-async def add_army_tanks(id, price, number):
-    cursor.execute("UPDATE army SET tanks = tanks + ? WHERE user_id = ?", (number, id))
-    await transfer_money(price, id, False)
-    conn.commit()
-
-def get_army(user_id):
-    cursor.execute('SELECT soldiers, cars, tanks FROM army WHERE user_id = ?', (user_id,))
-    result = cursor.fetchone()
-    return {'soldiers': result[0], 'cars': result[1], 'tanks': result[2]} if result else None
-
-def calculate_army_strength(army):
-    soldiers = army['soldiers']
-    cars = army['cars']
-    tanks = army['tanks']
-    
-    needed_soldiers_for_cars = cars * 3
-    needed_soldiers_for_tanks = tanks * 4
-    total_needed_soldiers = needed_soldiers_for_cars + needed_soldiers_for_tanks
-    
-    if soldiers < total_needed_soldiers:
-        return None 
-    
-    remaining_soldiers = soldiers - total_needed_soldiers
-    strength = remaining_soldiers + (cars * 5) + (tanks * 20)
-    return strength
-
-async def army_accept(id, price):
-    cursor.execute(f"SELECT money FROM users WHERE user_id = {id}")
-    c = cursor.fetchone()
-    money = c[0]
-    if money >= price:
-        return True
-    else: 
-        return False
-    
-async def add_army_slodiers(id, price, number):
-    country = await get_country_from_users(id)
+            cursor.execute("UPDATE countries SET economy = economy + ? WHERE name = ?", (economy, country))
+            await bot.send_message(chat_id=chat_id, text=f"💹 Было получено {economy} единиц экономики вашей страны! 💰")
+        except BaseException as e:
+            await bot.send_message(chat_id=chat_id, text="🚨 Ошибка: " + str(e))
+            Invest = False
+            break
+        
+        sleepfor = random.randint(20, 40)
+        await asyncio.sleep(sleepfor)
+        
+async def start_party_activate(chat_id, user_id, country, money):
+    global party_t
+    numOfParty = 0
     params = await get_country_params(country)
-    happiness = params[3]
-    population = params[3]
-    counter_happiness = math.ceil(happiness / 1000)
-    if population < 100:
-        await bot.send_message(chat_id=id, text=f"У вашего населения меньше 100\nВаше актуальное население: {population}")
-        return
-    if population < number:
-        await bot.send_message(chat_id=id, text=f"У вашего населения меньше чем вы хотите за вербовать: {number}\nВаше население: {population}")
-        return
-    if happiness < 20:
-        await bot.send_message(chat_id=id, text=f"У ваше счастье меньше 20\nВаше актуальное счастье: {happiness}")
-        return
-    if counter_happiness > happiness:
-        await bot.send_message(chat_id=id, text=f"Вы слишком много вербуете солдатов население в недовольствие!")
-        return
-    cursor.execute("UPDATE army SET soldiers = soldiers + ? WHERE user_id = ?", (number, id))
-    await transfer_happiness(counter_happiness, country, False)
-    await transfer_population(number, country, False)
-    await transfer_money(price, id, False)
-    conn.commit()
+    happiness_min = math.ceil(money / 2000)
+    happiness_max = math.ceil(money / 500)
+    happiness_bonus = params[8]
+    party_t = True
+    await transfer_happiness(30, country, False)
+
+    while party_t:
+        current_happiness = await get_country_params(country)
+
+        check = await party_checks(numOfParty, current_happiness, user_id, country)
+        numOfParty += 1
+        # print(F"Check:{check}, NumOfParty:{numOfParty}")
+        if check:
+            happiness = random.randint(happiness_min, happiness_max)
+            happiness_bonus_amount = happiness * happiness_bonus
+            happiness += happiness_bonus_amount
+            await bot.send_message(chat_id=chat_id, text=f"📈 Счастье увеличилось на {happiness}! 🎭")
+            await transfer_happiness(happiness, country, True)  # 🔄 Обновляем значение в БД
+            
+            sleepfor = random.randint(3, 5)
+            await asyncio.sleep(sleepfor)
+        else:
+            await bot.send_message(chat_id=chat_id, text="🎉 Праздник закончился!")
+            break
     
-async def add_army_cars(id, price, number):
-    cursor.execute("UPDATE army SET cars = cars + ? WHERE user_id = ?", (number, id))
-    await transfer_money(price, id, False)
-    conn.commit()
-    
-async def chek_is_war(attacker_id, defender_id):
-    cursor.execute(f"SELECT * FROM wars WHERE (country1 = {attacker_id} AND country2 = {defender_id}) OR (country1 = {defender_id} AND country2 = {attacker_id})")
-    result = cursor.fetchone()
-    if result is not None:
+async def party_checks(numOfParty, current_happiness, user_id, country):
+    first_check = False
+    second_check = False
+    if numOfParty >= 8:
+                await bot.send_message(chat_id=user_id, text="🎉 Праздник закончился!")
+                party_t = False
+                party_state[user_id] = "unblocked"
+                return
+    else:
+        first_check = True
+    if current_happiness[4] >= 100:
+                await bot.send_message(chat_id=user_id, text="🎊 Счастье достигло 100%! Праздник завершен.")
+                party_t = False
+                party_state[user_id] = "unblocked"
+                await set_happy_max(country)
+    else:
+        second_check = True
+    if first_check and second_check:
         return True
     else:
         return False
-    
-async def chek_is_army(user_id):
-    cursor.execute(f"SELECT * FROM army WHERE user_id = {user_id}")
-    result = cursor.fetchone()
-    if result is not None:
-        return True
-    else:
-        return False
-    
-def get_population_tier_list():
-    """ Получение тир-листа стран по населению (ТОП-5) """
-    cursor.execute("SELECT name, population FROM countries ORDER BY population DESC LIMIT 5")
-    top_countries = cursor.fetchall()
-    
-    if not top_countries:
-        return "📊 **Тир-лист по населению пуст**"
-
-    tier_list = "📊 **Тир-лист по населению:**\n"
-    for idx, (country, population) in enumerate(top_countries, 1):
-        tier_list += f"{idx}. {country} — {population} 👥\n"
-    
-    return tier_list
-
-def get_army(user_id):
-    """ Получение армии пользователя из БД """
-    cursor.execute("SELECT soldiers, cars, tanks FROM army WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    return {'soldiers': result[0], 'cars': result[1], 'tanks': result[2]} if result else None
-
-def update_army(user_id, soldiers, cars, tanks):
-    """ Обновление армии в БД """
-    cursor.execute("""
-        UPDATE army SET soldiers = ?, cars = ?, tanks = ? WHERE user_id = ?
-    """, (max(0, soldiers), max(0, cars), max(0, tanks), user_id))
-    conn.commit()
-
-def check_war_status(user_1_id, user_2_id):
-    """ Проверка, находятся ли игроки в войне и не в перемирии """
-    cursor.execute("""
-        SELECT result FROM wars WHERE 
-        (country1 = ? AND country2 = ?) OR (country1 = ? AND country2 = ?)
-    """, (user_1_id, user_2_id, user_2_id, user_1_id))
-    
-    war = cursor.fetchone()
-    return war and war[0] == "active"  # Если статус "active", значит идет война
-
-def calculate_army_strength(army):
-    """ Вычисление силы армии """
-    soldiers, cars, tanks = army['soldiers'], army['cars'], army['tanks']
-    needed_soldiers = (cars * 3) + (tanks * 4)
-
-    if soldiers < needed_soldiers:
-        return None  # Недостаточно солдат для управления техникой
-
-    return (soldiers - needed_soldiers) + (cars * 5) + (tanks * 20)
 
 # endregion
 
-# region InCountryMethods
+# region 2 ⁡⁢⁣⁣​‌‍‌InCountryMethods⁡​
 
 @r.callback_query(F.data == "invest")
 async def investigate(callback_query: CallbackQuery, state: FSMContext):
+    is_user = await chek_is_user(callback_query.from_user.id)
+    if is_user is False:
+        await callback_query.message.answer("🚫Вы не зарегистрированы")
+        return
+    
     await callback_query.message.answer("💰 Введите сумму инвестиции на вашу страну:\n🚫Отмена - отмена")
     await state.set_state(Investigate.num)
     
 @r.message(Investigate.num)
 async def process_investigate(message: Message, state: FSMContext):
     global numOfInvest, Invest
-    if message.text == "Отмена":
+    if message.text.lower() == "отмена":
         Invest = False
         await state.clear()
         return
@@ -485,6 +234,10 @@ async def start_party(callback_query: CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     chat_id = callback_query.message.chat.id
     is_user = await chek_is_user(user_id)
+    country_name = await get_country_from_users(user_id=user_id)
+    country = await get_country_params(country=country_name)
+    happiness = country
+    
     if is_user == False:
         await callback_query.answer("❌ Вы не зарегистрированы.")
         party_t = False
@@ -496,7 +249,7 @@ async def start_party(callback_query: CallbackQuery, state: FSMContext):
     
     party_state[user_id] = "blocked"
     
-    await callback_query.message.answer("Введите сумму которую потратите на праздник: ")
+    await callback_query.message.answer("💵Введите сумму которую потратите на праздник: ")
     await state.set_state(Party.amount)
     
 @r.message(Party.amount)
@@ -518,14 +271,14 @@ async def party_accept_procces(message: Message, state: FSMContext):
             await message.reply("⚠ У вас недостаточно средств для праздника.")
             return
         if int(message.text) <= 500:
-            await message.reply("Ваше население взбушевалось из-за маленького праздника -10 счастья")
+            await message.reply("😡Ваше население взбушевалось из-за маленького праздника -10 счастья")
             await transfer_happiness(10, country, False)
             return
             
         try:
             await transfer_money(int(message.text), message.from_user.id, False)
             asyncio.create_task(start_party_activate(chat_id, user_id, country, int(message.text)))
-            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждые 30 секунд.")
+            await message.reply("Праздник начато. Вы будете получать отчет о празднике каждые 5 секунд.")
             party_t = True
             await state.clear()
         except BaseException as e:
@@ -542,7 +295,7 @@ async def party_accept_procces(message: Message, state: FSMContext):
 
 # endregion
     
-# region earn money and product
+# region 3​‌‍‌ ⁡⁣⁣⁢earn money and product⁡​
 
 @r.message(F.text.in_({"копать", "Копать", "rjgfnm", "Rjgfnm"}))
 async def kop(message: Message):
@@ -630,13 +383,19 @@ async def stop_population(callback_query: types.CallbackQuery):
     
 # endregion
     
-# region guest methods
+# region 4 ⁡⁢⁢⁢​‌‌‍‍guest methods⁡​
 
 @r.message(Command("unlogin"))
 async def logout_account(message: Message, state: FSMContext):
     global captcha
+    
+    is_user = await chek_is_user(message.from_user.id)
+    if is_user == False:
+        await message.answer("🚫Вы не зарегистрированы")
+        return
+    
     captcha = await generate_captcha()
-    await message.answer(f"Введите капчу для подтверждения выхода:\nкод: {captcha}\n🚫Отмена - отмена")
+    await message.answer(f"🪪Введите капчу для подтверждения выхода:\nкод: {captcha}\n🚫Отмена - отмена")
     await state.set_state(Logout.captcha)
     
 @r.message(Logout.captcha)
@@ -645,13 +404,13 @@ async def check_captcha(message: Message, state: FSMContext):
     if message.text.lower() == captcha.lower():
         user_id = message.from_user.id
         await state.clear()
-        await message.answer("Выход из аккаунта успешно завершен.")
+        await message.answer("↪️Выход из аккаунта успешно завершен.")
         await ban_user(user_id, user_id)
     elif message.text.lower() == "отмена":
         await state.clear()
-        await message.answer("Выход отменен.")
+        await message.answer("↪️Выход отменен.")
     else:
-        await message.answer("Неправильный код. Попробуйте еще раз./unlogin")
+        await message.answer("❗️Неправильный код. Попробуйте еще раз./unlogin")
 
 @r.message(Command("help"))
 async def help(message: Message):
@@ -681,24 +440,29 @@ async def show_map(message: Message):
     
 @r.message(F.text.startswith('дать'))
 async def give_currency(message: Message):
+    is_user = await chek_is_user(message.from_user.id)
+    if is_user == False:
+        await message.answer("🚫Вы не зарегистрированы")
+        return
+    
     if not message.reply_to_message:
-        await message.reply("Вы должны ответить на сообщение пользователя, чтобы передать валюту.")
+        await message.reply("↪️Вы должны ответить на сообщение пользователя, чтобы передать валюту.")
         return
 
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            await message.reply("Вы должны указать сумму. Пример: дать 100")
+            await message.reply("💵Вы должны указать сумму. Пример: дать 100")
             return
         
         amount = int(parts[1])
 
         if amount <= 0:
-            await message.reply("Сумма должна быть положительной.")
+            await message.reply("💵Сумма должна быть положительной.")
             return
 
     except ValueError:
-        await message.reply("Некорректная сумма. Пример: дать 100")
+        await message.reply("💵Некорректная сумма. Пример: дать 100")
         return
 
     from_user_id = message.from_user.id
@@ -706,10 +470,10 @@ async def give_currency(message: Message):
 
 
     cursor.execute(F"SELECT money FROM users WHERE user_id = {message.from_user.id}")
-    c = cursor.fetchone()
-    money = c[0]
+    cur = cursor.fetchone()
+    money = cur[0]
     if money < amount:
-        await message.reply("У вас недостаточно средств.")
+        await message.reply("💵У вас недостаточно средств.")
     
 @r.message(Command("list_economy"))
 async def show_tierlist(message: types.Message):
@@ -732,130 +496,265 @@ async def list_population(message: Message):
     
 # endregion 
 
-# region Army
+# region 5 ⁡⁣⁢⁢​‌‌‍Army⁡​
 
 @r.message(F.text.lower() == 'сражаться')
 async def battle(message: Message):
-    """ Логика сражения между двумя пользователями """
+    
+    is_user = await chek_is_user(user_id=message.from_user.id)
+    if is_user is False:
+        await message.answer("🚫Вы не зарегистрированы")
+        return
+    
+    if is_on_cooldown(user_1_id) or is_on_cooldown(user_2_id):
+        left_1 = get_cooldown_time_left(user_1_id)
+        left_2 = get_cooldown_time_left(user_2_id)
+
+        msg = "⏳ Кулдаун боя!\n"
+        if left_1 > 0:
+            msg += f"🔹 Вам ждать: {left_1} сек.\n"
+        if left_2 > 0:
+            msg += f"🔸 Сопернику ждать: {left_2} сек."
+        await message.answer(msg)
+        return
+    
     if not message.reply_to_message:
         await message.answer("⚔️ **Сражение возможно только в ответ на сообщение соперника!**")
         return
 
     user_1_id, user_2_id = message.from_user.id, message.reply_to_message.from_user.id
-
-    # Проверяем, находятся ли они в войне и не в перемирии
     if not check_war_status(user_1_id, user_2_id):
         await message.answer("❌ **Вы не находитесь в войне или у вас перемирие!**")
         return
 
-    army_1, army_2 = get_army(user_1_id), get_army(user_2_id)
-
+    army_1, army_2 = await get_army(user_1_id), await get_army(user_2_id)
     if not army_1 or not army_2:
         await message.answer("❌ **Не удалось найти армию одного из пользователей.**")
         return
 
-    strength_1, strength_2 = calculate_army_strength(army_1), calculate_army_strength(army_2)
-
-    # Если у первой армии не хватает солдат → сразу проигрыш
-    if strength_1 is None:
-        await message.answer(f"⚠ **{message.from_user.username} проиграл! Недостаточно солдат для управления техникой.** ❌")
-        update_army(user_1_id, army_1['soldiers'] // 2, army_1['cars'] // 2, army_1['tanks'] // 2)
-        return
+    attacker_id, defender_id = user_1_id, user_2_id
+    attacker_army, defender_army = army_1, army_2
     
-    # Если у второй армии не хватает солдат → сразу проигрыш
-    if strength_2 is None:
-        await message.answer(f"⚠ **{message.reply_to_message.from_user.username} проиграл! Недостаточно солдат для управления техникой.** ❌")
-        update_army(user_2_id, army_2['soldiers'] // 2, army_2['cars'] // 2, army_2['tanks'] // 2)
+    country_name_1 = await get_country_from_users(user_1_id)
+    country_name_2 = await get_country_from_users(user_2_id)
+    country1 = await get_country_params(country_name_1)
+    country2 = await get_country_params(country_name_2)
+    army_1_bonus_attack = country1[10]
+    army_2_bonus_attack = country2[10]
+    army_1_bonus_defense = country1[9]
+    army_2_bonus_defense = country2[9]
+
+    def calculate_strength(army, is_attacker, attack_bonus_country, defense_bonus_country, luck=True):
+        base_strength = army['soldiers'] + army['cars'] * 5 + army['tanks'] * 10
+        if army['soldiers'] < (army['cars'] + army['tanks']):
+            return None
+
+        tactic_attack_bonus, tactic_defense_penalty = 1.0, 1.0
+        if is_attacker and army['tactic'] == 'attack':
+            tactic_attack_bonus, tactic_defense_penalty = 1.3, 0.65
+        elif not is_attacker and army['tactic'] == 'defend':
+            tactic_attack_bonus, tactic_defense_penalty = 0.65, 1.25
+
+        luck_factor = random.uniform(0.9, 1.1) if luck else 1.0
+
+        total_attack_bonus = tactic_attack_bonus * (1 + attack_bonus_country / 100)
+        total_defense_bonus = tactic_defense_penalty * (1 + defense_bonus_country / 100)
+
+        attack_strength = base_strength * total_attack_bonus * luck_factor
+        defense_strength = base_strength * total_defense_bonus * luck_factor
+
+        return attack_strength, defense_strength
+
+    # Расчёт силы без удачи для вероятности
+    attacker_base_attack, _ = calculate_strength(
+        attacker_army, True, army_1_bonus_attack, army_1_bonus_defense, luck=False
+    )
+    _, defender_base_defense = calculate_strength(
+        defender_army, False, army_2_bonus_attack, army_2_bonus_defense, luck=False
+    )
+
+    win_chance = 50.0  # по умолчанию
+    if attacker_base_attack and defender_base_defense:
+        win_chance = attacker_base_attack / (attacker_base_attack + defender_base_defense) * 100
+
+    # Расчёт с рандомом
+    attacker_attack, attacker_defense = calculate_strength(
+        attacker_army, True, army_1_bonus_attack, army_1_bonus_defense
+    )
+    defender_attack, defender_defense = calculate_strength(
+        defender_army, False, army_2_bonus_attack, army_2_bonus_defense
+    )
+
+    if attacker_attack is None:
+        await message.answer(f"⚠ **{message.from_user.username} проиграл! Недостаточно солдат.** ❌")
+        return
+    if defender_attack is None:
+        await message.answer(f"⚠ **{message.reply_to_message.from_user.username} проиграл! Недостаточно солдат.** ❌")
         return
 
-    # Победа первой армии
-    if strength_1 > strength_2:
-        result_message = f"🏆 **Победитель:** {message.from_user.username}!\n💥 **Сила армии:** {strength_1} vs {strength_2}"
-        
-        # Уменьшаем армию победителя на 20% от проигравшего
-        update_army(
-            user_1_id,
-            army_1['soldiers'] - int(army_2['soldiers'] * 0.2),
-            army_1['cars'] - int(army_2['cars'] * 0.2),
-            army_1['tanks'] - int(army_2['tanks'] * 0.2)
-        )
-        
-        # Проигравший теряет 90%
-        update_army(
-            user_2_id,
-            int(army_2['soldiers'] * 0.1),
-            int(army_2['cars'] * 0.1),
-            int(army_2['tanks'] * 0.1)
-        )
+    winner_name = loser_name = ""
+    if attacker_attack > defender_defense:
+        winner, loser = attacker_id, defender_id
+        winner_name = message.from_user.username or message.from_user.first_name
+        loser_name = message.reply_to_message.from_user.username or message.reply_to_message.from_user.first_name
 
-    # Победа второй армии
-    elif strength_1 < strength_2:
-        result_message = f"🏆 **Победитель:** {message.reply_to_message.from_user.username}!\n💥 **Сила армии:** {strength_2} vs {strength_1}"
-        
-        # Уменьшаем армию победителя на 20% от проигравшего
-        update_army(
-            user_2_id,
-            army_2['soldiers'] - int(army_1['soldiers'] * 0.2),
-            army_2['cars'] - int(army_1['cars'] * 0.2),
-            army_2['tanks'] - int(army_1['tanks'] * 0.2)
-        )
-        
-        # Проигравший теряет 90%
-        update_army(
-            user_1_id,
-            int(army_1['soldiers'] * 0.1),
-            int(army_1['cars'] * 0.1),
-            int(army_1['tanks'] * 0.1)
-        )
-
-    # Ничья → обе армии теряют от 10% до 15%
+        attacker_loss = 0.25
+        defender_loss = 0.5
     else:
-        percent_1 = random.randint(10, 15) / 100
-        percent_2 = random.randint(10, 15) / 100
-        result_message = f"⚔ **Ничья!** Обе армии потеряли силы.\n💪 Сила армии: {strength_1} vs {strength_2}"
+        winner, loser = defender_id, attacker_id
+        winner_name = message.reply_to_message.from_user.username or message.reply_to_message.from_user.first_name
+        loser_name = message.from_user.username or message.from_user.first_name
 
-        update_army(
-            user_1_id,
-            int(army_1['soldiers'] * (1 - percent_1)),
-            int(army_1['cars'] * (1 - percent_1)),
-            int(army_1['tanks'] * (1 - percent_1))
-        )
+        attacker_loss = 0.4
+        defender_loss = 0.2
 
-        update_army(
-            user_2_id,
-            int(army_2['soldiers'] * (1 - percent_2)),
-            int(army_2['cars'] * (1 - percent_2)),
-            int(army_2['tanks'] * (1 - percent_2))
-        )
+    # Снижаем армии
+    update_army(
+        attacker_id,
+        int(attacker_army['soldiers'] * (1 - attacker_loss)),
+        int(attacker_army['cars'] * (1 - attacker_loss)),
+        int(attacker_army['tanks'] * (1 - attacker_loss))
+    )
+    update_army(
+        defender_id,
+        int(defender_army['soldiers'] * (1 - defender_loss)),
+        int(defender_army['cars'] * (1 - defender_loss)),
+        int(defender_army['tanks'] * (1 - defender_loss))
+    )
 
+    await bot.send_message(winner, f"🎉 Поздравляем, {winner_name}! Вы одержали победу над {loser_name}!")
+    await bot.send_message(loser, f"😢 Вы проиграли битву против {winner_name}. Подготовьтесь лучше в следующий раз!")
+
+    result_message = (
+        f"🏆 **Победитель:** {winner_name}!\n"
+        f"💥 Сила удара: {attacker_attack:.0f} vs {defender_defense:.0f}\n"
+        f"📊 **Вероятность победы атакующего:** {win_chance:.1f}%\n"
+        f"☠️ Потери атакующего: -{int(attacker_loss * 100)}%\n"
+        f"☠️ Потери защитника: -{int(defender_loss * 100)}%"
+    )
+    
     await message.answer(result_message)
+    set_cooldown(user_1_id)
+    set_cooldown(user_2_id)
+    
+@r.callback_query(F.data == "ad_ready")
+async def ad_ready(call: CallbackQuery):
+    global ready_army
+    user_id = call.from_user.id
+    current_ready_army = await get_ready_army_by_user(user_id)
+    
+    if current_ready_army == None:
+        current_ready_army = 0
+        
+    if current_ready_army >= 100:
+        await call.answer("🔝Ваша готовнасть равняется 100.")
+        await set_army_ready_by_user(user_id, 100)
+        return
+        
+    if user_id in army_ready_state and army_ready_state[user_id] == "blocked":
+        await call.answer("Тренировка уже запущена.")
+        return
+        
+    await call.answer(text="🔝Повышение готовности войск начато!", show_alert=True)
+        
+    army_ready_state[user_id] = "blocked"
+    ready_army = True
+    asyncio.create_task(while_transfer_ready_army(user_id, 1, call))
+        
+@r.callback_query(F.data == "tactics")
+async def tactics(call: CallbackQuery):
+    tactic_get = await get_army(call.from_user.id)
+    
+    if tactic_get:
+        tactic = tactic_get['tactic']
+        if tactic == "defend":
+            await call.message.answer(f"↔️Ваша тактика:\n🔄тактика: {tactic}\nБонусы:\n🆙🛡️-Повышается защита на 40%\n〽️🗡️-Понижается атака на 50%")
+        if tactic == "attack":
+            await call.message.answer(f"⬆Ваша тактика:\n🔄тактика: {tactic}\nБонусы:\n-🆙🗡️Повышается атака на 35%\n-〽️🛡️Понижается защита на 50%")
+        await call.message.answer(f"🆕Для изменения тактики есть кнопки снизу", reply_markup=edit_tactic_kb)
+    else:
+        await call.message.answer("🚫Ошибка: не удалось получить данные о вашей армии.")
+
+@r.callback_query(F.data == "tactics_defend")
+async def tactics_defend(call: CallbackQuery):
+    user_id = call.from_user.id
+    now = time.time()
+
+    # Проверка кулдауна
+    last_used = cooldown_storage_defend.get(user_id)
+    if last_used and (now - last_used < COOLDOWN_SECONDS):
+        remaining = int(COOLDOWN_SECONDS - (now - last_used))
+        await call.answer(f"⏳ Подождите {remaining} сек. перед следующим изменением.", show_alert=True)
+        return
+
+    # Обновляем время использования
+    cooldown_storage_defend[user_id] = now
+
+    defend = await get_tactics_by_user(user_id=user_id)
+    
+    if defend != "defend":
+        defend = "defend"
+        await edit_tactic(call.from_user.id, defend)
+        await call.message.answer("✏️ Тактика изменена на 'defend'")
+    elif defend == "defend":
+        await call.message.answer("❗️ У вас уже тактика изменена на 'defend'")
+    else:
+        await call.message.answer(f"🚫Error: call.from_user.id:{call.from_user.id}, defend:{defend}, cooldown_storage_defend:{cooldown_storage_defend.get(user_id)}, COOLDOWN_SECONDS:{COOLDOWN_SECONDS}")
+
+@r.callback_query(F.data == "tactics_attack")
+async def tactics_attack(call: CallbackQuery):
+    user_id = call.from_user.id
+    now = time.time()
+
+    # Проверка кулдауна
+    last_used = cooldown_storage_attack.get(user_id)
+    if last_used and (now - last_used < COOLDOWN_SECONDS):
+        remaining = int(COOLDOWN_SECONDS - (now - last_used))
+        await call.answer(f"⏳ Подождите {remaining} сек. перед следующим изменением.", show_alert=True)
+        return
+
+    # Обновляем время использования
+    cooldown_storage_attack[user_id] = now
+
+    attack = await get_tactics_by_user(user_id=user_id)
+    
+    if attack != "attack":
+        attack = "attack"
+        await edit_tactic(call.from_user.id, attack)
+        await call.message.answer("✏️ Тактика изменена на 'attack'")
+    elif attack == "attack":
+        await call.message.answer("❗️ У вас уже тактика изменена на 'attack'")
+    else:
+        await call.message.answer(f"🚫Error: call.from_user.id:{call.from_user.id}, attack:{attack}, cooldown_storage_attack:{cooldown_storage_attack.get(user_id)}, COOLDOWN_SECONDS:{COOLDOWN_SECONDS}")
 
 @r.message(F.text.in_({'Армия','армия','Army'}))
 async def army(message: Message):
-    cursor.execute(F"SELECT user_id FROM army WHERE user_id = {message.from_user.id}")
-    u = cursor.fetchone()
-    conn.commit
-    if u == None:
-        cursor.execute("INSERT INTO army(user_id, soldiers, cars, tanks) VALUES(?, ?, ?, ?)", (message.from_user.id, 10, 2, 1))
+    user_id = message.from_user.id
+    is_user = await chek_is_user(user_id)
+    if is_user == False:
+        await message.answer("🚫Вы не зарегистрированы")
+        return
+    is_army = await chek_is_army(user_id=user_id)
+    country_name = await get_country_from_users(user_id=user_id)
+    if is_army is False:
+        cursor.execute("INSERT INTO army(user_id, soldiers, cars, tanks) VALUES(?, ?, ?, ?)", (user_id, 10, 2, 1))
         conn.commit()
         await message.answer("Армия создана!🪖")
     else:
-        cursor.execute(f"SELECT soldiers FROM army WHERE user_id = {message.from_user.id}")
-        s = cursor.fetchone()
-        soldiers = s[0]
-        cursor.execute(f"SELECT cars FROM army WHERE user_id = {message.from_user.id}")
-        c = cursor.fetchone()
-        cars = c[0]
-        cursor.execute(f"SELECT tanks FROM army WHERE user_id = {message.from_user.id}")
-        t = cursor.fetchone()
-        tanks = t[0]
-        conn.commit()
-        balls = soldiers + (cars * 5) + (tanks * 20)
-        need = (cars * 3) + (tanks * 4)
+        army_params = await get_army(user_id)
+        soldiers = army_params['soldiers']
+        cars = army_params['cars']
+        tanks = army_params['tanks']
+        ready = army_params['ready']
+        army = await calculate_army_strength(army_params, country_name=country_name)
+        need = army['needed_soldiers']
+        strength = army['strength']
+        attack_bonus = army['attack_bonus']
+        defense_bonus = army['defense_bonus']
         if soldiers <= need:
-            await message.answer(f"Не хватка Солдат!{soldiers - need}", reply_markup=armmy_kb)
+            await message.answer(f"🚫Не хватка Солдат!{soldiers - need}", reply_markup=armmy_kb)
         else:
-            await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖\nМашины - {cars}🛻\nТанки - {tanks}💥\nБаллы - {balls}\nДля познания команд отношении введите - /army_peace", reply_markup=armmy_kb)
+            await message.answer(f"--Армия--\nСолдаты - {soldiers - need}🪖, стоимость - 100💵\nМашины - {cars}🛻, стоимость - 1000💵\nТанки - {tanks}💥, стоимость - 3000💵\nГотовность - {ready}🔰\n⚔️Бонус в атаке - {attack_bonus}\n🛡️Бонус в защите - {defense_bonus}\nБаллы - {strength}\nДля познания команд отношении введите - /army_peace", reply_markup=armmy_kb)
 
 @r.message(Command("army_peace"))
 async def army_peace_help(message: Message):
@@ -863,16 +762,16 @@ async def army_peace_help(message: Message):
 
 @r.callback_query(F.data == 'sol')
 async def add_soldiers(callback: CallbackQuery):
-    acc = await army_accept(callback.from_user.id, 100)
+    acc = await army_accept(callback.from_user.id, 100, 10)
     if acc == True:
         await add_army_slodiers(callback.from_user.id, 100, 10)
-        await callback.message.answer("10 Солдат успешно прибыли в вашу армию!🪖")
+        await bot.send_message(callback.from_user.id, "10 Солдат успешно прибыли в вашу армию!🪖")
     else:
         await callback.message.answer("Не достаточно денег📉")
 
 @r.callback_query(F.data == 'car')
 async def add_сars(callback: CallbackQuery):
-    acc = await army_accept(callback.from_user.id, 1000)
+    acc = await army_accept(callback.from_user.id, 1000, 5)
     if acc == True:
         await add_army_cars(callback.from_user.id, 1000, 5)
         await callback.message.answer("5 Машин успешно прибыли в вашу армию!🪖")
@@ -881,7 +780,7 @@ async def add_сars(callback: CallbackQuery):
 
 @r.callback_query(F.data == 'tan')
 async def add_tanks(callback: CallbackQuery):
-    acc = await army_accept(callback.from_user.id, 3000)
+    acc = await army_accept(callback.from_user.id, 3000, 1)
     if acc == True:
         await add_army_tanks(callback.from_user.id, 3000, 1)
         await callback.message.answer("1 Танк успешно прибыли в вашу армию!🪖")
@@ -901,22 +800,22 @@ async def declare_war(message: types.Message, state: FSMContext):
         is_army1 = await chek_is_army(attacker_id)
         is_army2 = await chek_is_army(defender_id)
         if is_user1 == False:
-            await message.reply("Вы не зарегистрированы!")
+            await message.reply("🚫Вы не зарегистрированы!")
             return
         if is_user2 == False:
-            await message.reply("Враг не зарегистрирован!")
+            await message.reply("🚫Враг не зарегистрирован!")
             return
         
         if is_war == True:
-            await message.reply("Вы уже объявили войну с этим игроком!")
+            await message.reply("🚫Вы уже объявили войну с этим игроком!")
             return
 
         if is_army1 == False:
-            await message.reply("Вы не создали армию!")
+            await message.reply("🚫Вы не создали армию!")
             return
         
         if is_army2 == False:
-            await message.reply("Враг не создали армию!")
+            await message.reply("🚫Враг не создали армию!")
             return
 
         cursor.execute(
@@ -1008,7 +907,35 @@ async def decline_peace(callback_query: types.CallbackQuery):
         
 # endregion
 
-# region admin
+# region 6 ⁡⁢⁣⁢​‌‌‍admin⁡​
+
+@r.message(Command("get_admin"))
+async def get_admin(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if not is_admin:
+        await message.reply("❌ У вас недостаточно прав.")
+        return
+
+    cursor.execute("SELECT user_id FROM admins")
+    admins = cursor.fetchall()  # Получаем список всех админов
+
+    if not admins:
+        await message.reply("❌ В базе данных нет админов.")
+        return
+
+    admin_list = []
+    for admin in admins:
+        admin_id = admin[0]
+        cursor.execute("SELECT name FROM users WHERE user_id = ?", (admin_id,))
+        admin_name = cursor.fetchone()
+        
+        if admin_name:
+            admin_list.append(f"🆔 {admin_id} | 👤 {admin_name[0]}")
+        else:
+            admin_list.append(f"🆔 {admin_id} | ❌ Имя не найдено")
+
+    result_text = "\n".join(admin_list)
+    await message.reply(f"👑 **Список администраторов:**\n{result_text}")
 
 @r.message(Command("register_admin"))
 async def register_admin(message: Message, state: FSMContext):
@@ -1017,7 +944,7 @@ async def register_admin(message: Message, state: FSMContext):
     
 @r.message(RegisterAdmin.password)
 async def register_admin_password(message: Message, state: FSMContext):
-    if message.text == "Отмена" or message.text == "отмена":
+    if message.text.lower() == "отмена":
         await message.reply("Отмена регистрации.")
         await state.finish()
         return
@@ -1031,7 +958,7 @@ async def register_admin_password(message: Message, state: FSMContext):
         await message.reply("🚨Вы уже администратор.")
         await state.clear()
         return
-    if message.text == "Отмена" or message.text == "отмена":
+    if message.text.lower() == "отмена":
         await message.reply("Отмена регистрации.")
         await state.clear()
         return
@@ -1052,7 +979,7 @@ async def admin_command(message: Message):
         await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
         logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
         return
-    await message.answer("ban 'ID' - бан игрока по ID\ngivement 'sum' 'ID' - Выдача денег по ID\ncreate_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\ndelete_country 'name' - удаление страны по названию\nget_users - получение всех пользователей с их ID и вообщем все информации\nget_country - получени всех стран с их параметрами", reply_markup=keyboard_admin)
+    await message.answer("/ban 'ID' - бан игрока по ID\n/givement <id получателя> <сумма>. - Выдача денег по ID\n/create_country 'name' 'economy' 'population' 'happiness' 'temp_rost' - создание страны с добавление ее пораметров\n/delete_country 'name' - удаление страны по названию\n/get_users - получение всех пользователей с их ID и вообщем все информации\n/get_country - получени всех стран с их параметрамит\n/get_admin - получение всех админов\n/update_country - обновление страны по его параметрам\n", reply_markup=keyboard_admin)
     
 @r.message(Command("ban"))
 async def ban_user_message(message: Message):
@@ -1063,8 +990,16 @@ async def ban_user_message(message: Message):
         return
     args = message.text.split()
     if len(args)!= 2:
-        await message.reply("🚨Неверный формат команды. Используйте: /ban 'ID'", reply_markup=keyboard_admin)
-        await ban_user_reply(message, message.from_user.id)
+        if message.reply_to_message:
+            ban_user_id = message.reply_to_message.from_user.id
+            await ban_user(ban_user_id, message.from_user.id)
+            await message.answer(F"❗️Пользователь с ID: {ban_user_id} был забанен", reply_markup=keyboard_admin)
+            logging.info(f"Пользователь с ID: {ban_user_id} забанен пользователем с ID: {message.from_user.id}")
+            return
+        else:
+            await message.reply("❗️Неверный формат. Используйте: /ban <id пользователя>")
+            logging.info(f"Пользователь с ID: {message.from_user.id} попытался забанить игрока")
+            return
     user_id = int(args[1])
     if user_id == admin:
         logging.info(F"Пользователь с ID: {message.from_user.id} пытался забанить разработчика!")
@@ -1072,16 +1007,13 @@ async def ban_user_message(message: Message):
     await ban_user(user_id, message.from_user.id)
     await message.reply(F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
     
-async def ban_user_reply(message, user_id):
-    if message.reply_to_message:
-        ban_user = message.reply_to_message.from_user.id
-        await ban_user(ban_user, user_id)
-        await bot.send_message(user_id, F"❗️Пользователь с ID: {user_id} был забанен", reply_markup=keyboard_admin)
-        logging.info(f"Пользователь с ID: {ban_user} забанен пользователем с ID: {user_id}")
-    return
-    
 @r.message(Command('givement'))
 async def givement_pol(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        return
     try:
         args = message.text.split()
         if len(args) < 3:
@@ -1118,9 +1050,15 @@ async def start_broadcast(message: Message, state: FSMContext):
     
 @r.message(BroadcastForm.waiting_for_message, F.content_type == ContentType.TEXT)
 async def get_broadcast_message(message: Message, state: FSMContext):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        await state.clear()
+        return
     broadcast_text = message.text
     
-    if broadcast_text == "отмена" or broadcast_text == "Отмена":
+    if broadcast_text.lower() == "отмена":
         await message.answer("Рассылка отменена.", reply_markup=keyboard_admin)
         await state.clear()
         return
@@ -1161,6 +1099,11 @@ async def get_country(message: Message):
 
 @r.message(Command("delete_country"))
 async def delete_country(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        return
     try:
         args = message.text.split()
         if len(args)!= 2:
@@ -1174,9 +1117,14 @@ async def delete_country(message: Message):
         await message.reply(f"Страна '{name}' успешно удалена.", reply_markup=keyboard_admin)
     except ValueError as ve:
         await message.reply(f"Ошибка: {ve}", reply_markup=keyboard_admin)
-           
+
 @r.message(Command("create_country"))
 async def create_country(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        return
 
     try:
         args = message.text.split()
@@ -1199,6 +1147,11 @@ async def create_country(message: Message):
         
 @r.message(Command("update_country"))
 async def update_country(message: Message):
+    is_admin = await chek_is_admin(message.from_user.id)
+    if is_admin == False:
+        await message.reply("🚨У вас недостаточно прав для выполнения этой операции.")
+        logging.info(f"Пользователь с ID: {message.from_user.id} попытался узнать команды админа")
+        return
     try:
         args = message.text.split()
         if len(args)!= 7:
@@ -1243,7 +1196,6 @@ async def ban_admin(message: Message, state:FSMContext):
             
         if adma != None:
             cursor.execute(f"DELETE FROM admins WHERE user_id = {message.text}")
-            connection.commit()
             await bot.send_message(message.text, f"Вы были удалены админом {message.from_user.first_name}")
             await message.reply("Удаление прошло успешно!✅")
             await state.clear()
